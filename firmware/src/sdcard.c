@@ -29,8 +29,12 @@ int sd_list_roms(rom_entry_t *out, int max) {
     if (sd_mount() != 0) return -1;
     DIR dir; FILINFO fi;
     int n = 0;
+    printf("scan: opendir\n");
     if (f_opendir(&dir, "/") != FR_OK) return -2;
+    printf("scan: readdir loop\n");
     while (n < max && f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
+        printf("scan: entry '%s' attr=%02x size=%lu\n", fi.fname,
+               fi.fattrib, (unsigned long)fi.fsize);
         int len = strlen(fi.fname);
         if (len < 5 || strcasecmp(fi.fname + len - 4, ".s32")) continue;
         strncpy(out[n].name, fi.fname, sizeof out[n].name - 1);
@@ -39,6 +43,7 @@ int sd_list_roms(rom_entry_t *out, int max) {
         // read the title out of the header
         FIL f;
         out[n].title[0] = 0;
+        printf("scan: open header %s\n", fi.fname);
         if (f_open(&f, fi.fname, FA_READ) == FR_OK) {
             uint8_t hdr[64]; UINT br;
             if (f_read(&f, hdr, 64, &br) == FR_OK && br == 64 &&

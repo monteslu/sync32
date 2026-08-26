@@ -56,7 +56,15 @@ volatile bool s32_long_op = false;      // set around mkfs/flash-writes etc
 void s32_note_present(void) { last_present_frame = video_frame_count(); }
 static bool dog_cb(struct repeating_timer *t) {
     (void)t;
-    if (s32_long_op || video_frame_count() - last_present_frame < 150)
+    // feed only while ALIVE: long op in progress, early boot grace, or
+    // scanout advancing with a recent present. A frozen vframe used to
+    // satisfy the old check forever (0 - 0 < 150): hangs lived for good.
+    static uint32_t last_seen_vframe;
+    uint32_t vf = video_frame_count();
+    bool scanning = vf != last_seen_vframe;
+    last_seen_vframe = vf;
+    if (s32_long_op || to_ms_since_boot(get_absolute_time()) < 8000 ||
+        (scanning && vf - last_present_frame < 150))
         watchdog_update();
     return true;
 }

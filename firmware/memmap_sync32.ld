@@ -230,7 +230,7 @@ SECTIONS
     } > RAM
     /* historically on GCC sbrk was growing past __HeapLimit to __StackLimit, however
        to be more compatible, we now set __HeapLimit explicitly to where the end of the heap is */
-    __HeapLimit = ORIGIN(RAM) + LENGTH(RAM);
+    __HeapLimit = ORIGIN(RAM) + LENGTH(RAM) - 0x2000;   /* below both stacks */
 
     /* Start and end symbols must be word-aligned */
     .scratch_x : {
@@ -258,11 +258,17 @@ SECTIONS
     /* by default we put core 0 stack at the end of scratch Y, so that if core 1
      * stack is not used then all of SCRATCH_X is free.
      */
-    .stack1_dummy (NOLOAD):
+    /* PIN the stacks to the TOP of RAM. The .stack1_dummy content is
+     * pico_multicore's REAL core1 stack array: leaving these sections at
+     * the free-flowing location counter parked core1's stack right above
+     * the heap, and exFAT mallocs grew into it (scanout death, stripes,
+     * boot loop, 2026-08-25). Core0's SP starts at __StackTop and grows
+     * down into .stack_dummy's region. */
+    .stack1_dummy ORIGIN(RAM) + LENGTH(RAM) - 0x2000 (NOLOAD):
     {
         *(.stack1*)
     } > RAM
-    .stack_dummy (NOLOAD):
+    .stack_dummy ORIGIN(RAM) + LENGTH(RAM) - 0x1000 (NOLOAD):
     {
         KEEP(*(.stack*))
     } > RAM
@@ -273,7 +279,7 @@ SECTIONS
     } > FLASH =0xaa
 
     /* stack limit is poorly named, but historically is maximum heap ptr */
-    __StackLimit = ORIGIN(RAM) + LENGTH(RAM);
+    __StackLimit = ORIGIN(RAM) + LENGTH(RAM) - 0x2000;  /* heap may not touch stacks */
     __StackOneTop = ORIGIN(RAM) + LENGTH(RAM) - 4096;  /* below core0 stack */
     __StackTop = ORIGIN(RAM) + LENGTH(RAM);          /* firmware RAM, not scratch */
     __StackOneBottom = __StackOneTop - SIZEOF(.stack1_dummy);
