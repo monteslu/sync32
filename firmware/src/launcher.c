@@ -103,6 +103,8 @@ void launcher_run(void) {
     static rom_entry_t roms[32];   // 2.2KB: off the stack
     int n = -1, sel = 0, scroll = 0;
     int sd_state = -99;                            // force first scan
+    void s32_xip_boot_check(void);
+    s32_xip_boot_check();                 // reboot-from-staging lands here
     uint32_t rescan_at = 0;
     // dual-role usb plumbing (usb_input.c / tinyusb)
     bool s32_usb_host_active(void);
@@ -215,6 +217,15 @@ void launcher_run(void) {
         if (((e & S32_PAD_A) || cc == '\r' || cc == '\n' || cc == 'p') && n > 0) {
             uint32_t size;
             printf("loading %s...\n", roms[sel].name);
+            if (roms[sel].xip) {
+                void s32_disk_set_dir(const char *rom_filename);
+                s32_disk_set_dir(roms[sel].name);
+                sd_set_game_id(roms[sel].game_id);
+                int s32_xip_stage_and_launch(const char *filename);
+                int xr = s32_xip_stage_and_launch(roms[sel].name);
+                printf("xip launch failed: %d\n", xr);
+                continue;
+            }
             if (sd_read_rom(roms[sel].name, ROM_BUF, ROM_BUF_MAX, &size) == 0) {
                 const s32_header_t *h = (const s32_header_t *)ROM_BUF;
                 sd_set_game_id(h->game_id);

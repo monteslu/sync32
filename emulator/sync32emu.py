@@ -8,7 +8,7 @@ keys: arrows=dpad  Z=A X=B A=X S=Y  Q=L W=R  Enter=Start RShift=Select  Esc=quit
 """
 import sys, struct, time, zlib, argparse, pathlib
 import numpy as np
-from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_CODE
+from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_CODE, UC_HOOK_MEM_UNMAPPED
 from unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
     UC_ARM_REG_R3, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC)
 
@@ -52,6 +52,11 @@ class Sync32Emu:
         uc.mem_write(API_FUNCS, b"\x00\xbf" * (n_funcs * 2))   # nops (never executed)
         uc.hook_add(UC_HOOK_CODE, self.on_syscall, begin=API_FUNCS,
                     end=API_FUNCS + n_funcs * 4)
+        def bad_mem(uc2, access, addr, sz, val, _):
+            print(f"UNMAPPED access at {addr:#x} size={sz} val={val:#x} "
+                  f"pc={uc2.reg_read(UC_ARM_REG_PC):#x} lr={uc2.reg_read(UC_ARM_REG_LR):#x}")
+            return False
+        uc.hook_add(UC_HOOK_MEM_UNMAPPED, bad_mem)
 
         # console state
         self.height = 180 if vmode == 1 else 240

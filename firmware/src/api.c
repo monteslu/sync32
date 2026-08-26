@@ -103,7 +103,12 @@ static const sync32_api_t api_table = {
 
 // jump to a loaded game: PSP = game stack, thread mode switches to PSP so
 // IRQs keep running on the firmware's MSP stack.
-__attribute__((noreturn)) static void enter_game(uint32_t entry) {
+__attribute__((noreturn)) static void enter_game_asm(uint32_t entry);
+void s32_enter_game(uint32_t entry) {   // also used by the XIP boot path
+    video_sheet_reset();
+    enter_game_asm(entry);
+}
+__attribute__((noreturn)) static void enter_game_asm(uint32_t entry) {
     // ensure FPU (CP10/CP11 full access) for the game context
     *(volatile uint32_t *)0xE000ED88 |= (0xFu << 20);
     __asm volatile("dsb; isb");
@@ -139,7 +144,7 @@ int s32_launch(const uint8_t *rom, uint32_t size) {
         uint32_t entry_offset = h->entry_offset;
         if (code_size > 0x50000 - 0x4000) return -6;
         memmove((void *)0x20030000, rom + code_offset, code_size);
-        enter_game(0x20030000 + entry_offset);
+        enter_game_asm(0x20030000 + entry_offset);
     }
     return -7;   // XIP mode handled by flash-slot path (M3)
 }

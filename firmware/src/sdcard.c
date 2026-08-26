@@ -40,6 +40,8 @@ int sd_list_roms(rom_entry_t *out, int max) {
         strncpy(out[n].name, fi.fname, sizeof out[n].name - 1);
         out[n].name[sizeof out[n].name - 1] = 0;
         out[n].size = fi.fsize;
+        out[n].xip = 0;
+        memset(out[n].game_id, 0, 8);
         // read the title out of the header
         static FIL f;
         out[n].title[0] = 0;
@@ -50,6 +52,8 @@ int sd_list_roms(rom_entry_t *out, int max) {
                 *(uint32_t *)hdr == S32_MAGIC) {
                 memcpy(out[n].title, hdr + 0x20, 16);
                 out[n].title[16] = 0;
+                out[n].xip = hdr[28] == 1;      // load_mode
+                memcpy(out[n].game_id, hdr + 48, 8);
             }
             f_close(&f);
         }

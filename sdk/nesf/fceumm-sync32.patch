@@ -1,0 +1,638 @@
+diff --git a/src/boards/BMW8544.c b/src/boards/BMW8544.c
+index f0ef3ba..b133880 100644
+--- a/src/boards/BMW8544.c
++++ b/src/boards/BMW8544.c
+@@ -55,9 +55,9 @@ static DECLFW(UNLBMW8544ProtWrite) {
+ static DECLFR(UNLBMW8544ProtRead) {
+ 	if(!(A & 1)) {
+ 		if((EXPREGS[0] & 0xE0) == 0xC0) {
+-			EXPREGS[1] = ARead[0x6a](0x6a);	/* program can latch some data from the BUS, but I can't say how exactly, */
++			EXPREGS[1] = FCEU_AReadAt(0x6a)(0x6a);	/* program can latch some data from the BUS, but I can't say how exactly, */
+ 		} else {							/* without more equipment and skills ;) probably here we can try to get any write */
+-			EXPREGS[2] = ARead[0xff](0xff);	/* before the read operation */
++			EXPREGS[2] = FCEU_AReadAt(0xff)(0xff);	/* before the read operation */
+ 		}
+ 		FixMMC3CHR(MMC3_cmd & 0x7F);		/* there are more different behaviour of the board that's not used by game itself, so unimplemented here and */
+ 	}										/* actually will break the current logic ;) */
+diff --git a/src/boards/onebus.c b/src/boards/onebus.c
+index f2af158..f3955f1 100644
+--- a/src/boards/onebus.c
++++ b/src/boards/onebus.c
+@@ -311,7 +311,7 @@ static void UNLOneBusCpuHook(int a) {
+ 				X6502_IRQBegin(FCEU_IQEXT);
+ 			} else {
+ 				uint16_t addr = pcm_addr | ((apu40xx[0x30]^3) << 14);
+-				uint8_t raw_pcm = ARead[addr](addr) >> 1;
++				uint8_t raw_pcm = FCEU_AReadAt(addr)(addr) >> 1;
+ 				defapuwrite[0x11](0x4011, raw_pcm);
+ 				pcm_addr++;
+ 				pcm_addr &= 0x7FFF;
+diff --git a/src/drawing.h b/src/drawing.h
+index a290569..7f9c792 100644
+--- a/src/drawing.h
++++ b/src/drawing.h
+@@ -1,7 +1,7 @@
+ #ifndef _FCEU_DRAWING_H
+ #define _FCEU_DRAWING_H
+ 
+-uint8_t fontdata2[2048] =
++static const uint8_t fontdata2[2048] =
+ {
+ 	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7e,0x81,0xa5,0x81,0xbd,0x99,0x81,0x7e,0x7e,0xff,0xdb,0xff,0xc3,0xe7,0xff,0x7e,0x36,0x7f,0x7f,0x7f,0x3e,0x1c,0x08,0x00,
+ 	0x08,0x1c,0x3e,0x7f,0x3e,0x1c,0x08,0x00,0x1c,0x3e,0x1c,0x7f,0x7f,0x3e,0x1c,0x3e,0x08,0x08,0x1c,0x3e,0x7f,0x3e,0x1c,0x3e,0x00,0x00,0x18,0x3c,0x3c,0x18,0x00,0x00,
+diff --git a/src/fceu.c b/src/fceu.c
+index ba1706a..c686cfe 100644
+--- a/src/fceu.c
++++ b/src/fceu.c
+@@ -54,8 +54,69 @@ void (*GameInterface)(int h);
+ 
+ void (*GameStateRestore)(int version);
+ 
+-readfunc ARead[0x10000];
+-writefunc BWrite[0x10000];
++/* sync32 two-level dispatch (see fceu.h) */
++#define FCEU_DISP_POOL 12
++readfunc fceu_aread_uni[256];
++readfunc *fceu_aread_sub[256];
++writefunc fceu_bwrite_uni[256];
++writefunc *fceu_bwrite_sub[256];
++static readfunc fceu_aread_pool[FCEU_DISP_POOL][256];
++static writefunc fceu_bwrite_pool[FCEU_DISP_POOL][256];
++static int fceu_aread_pool_n, fceu_bwrite_pool_n;
++
++static readfunc *aread_page_materialize(uint32_t pg) {
++	int i;
++	readfunc *t;
++	if (fceu_aread_sub[pg]) return fceu_aread_sub[pg];
++	if (fceu_aread_pool_n >= FCEU_DISP_POOL) return NULL; /* out of pool */
++	t = fceu_aread_pool[fceu_aread_pool_n++];
++	for (i = 0; i < 256; i++) t[i] = fceu_aread_uni[pg];
++	fceu_aread_sub[pg] = t;
++	return t;
++}
++static writefunc *bwrite_page_materialize(uint32_t pg) {
++	int i;
++	writefunc *t;
++	if (fceu_bwrite_sub[pg]) return fceu_bwrite_sub[pg];
++	if (fceu_bwrite_pool_n >= FCEU_DISP_POOL) return NULL;
++	t = fceu_bwrite_pool[fceu_bwrite_pool_n++];
++	for (i = 0; i < 256; i++) t[i] = fceu_bwrite_uni[pg];
++	fceu_bwrite_sub[pg] = t;
++	return t;
++}
++/* share identical subtables (PPU mirrors: 32 pages, one pattern) */
++static void aread_pool_intern(uint32_t pg) {
++	int i;
++	readfunc *t = fceu_aread_sub[pg];
++	if (!t || t != fceu_aread_pool[fceu_aread_pool_n - 1]) return;
++	for (i = 0; i < fceu_aread_pool_n - 1; i++)
++		if (!memcmp(fceu_aread_pool[i], t, sizeof fceu_aread_pool[0])) {
++			fceu_aread_sub[pg] = fceu_aread_pool[i];
++			fceu_aread_pool_n--;
++			return;
++		}
++}
++static void bwrite_pool_intern(uint32_t pg) {
++	int i;
++	writefunc *t = fceu_bwrite_sub[pg];
++	if (!t || t != fceu_bwrite_pool[fceu_bwrite_pool_n - 1]) return;
++	for (i = 0; i < fceu_bwrite_pool_n - 1; i++)
++		if (!memcmp(fceu_bwrite_pool[i], t, sizeof fceu_bwrite_pool[0])) {
++			fceu_bwrite_sub[pg] = fceu_bwrite_pool[i];
++			fceu_bwrite_pool_n--;
++			return;
++		}
++}
++void FCEU_SetReadAt(uint32_t a, readfunc fn) {
++	uint32_t pg = (a >> 8) & 0xFF;
++	readfunc *t = aread_page_materialize(pg);
++	if (t) { t[a & 0xFF] = fn; aread_pool_intern(pg); }
++}
++void FCEU_SetWriteAt(uint32_t a, writefunc fn) {
++	uint32_t pg = (a >> 8) & 0xFF;
++	writefunc *t = bwrite_page_materialize(pg);
++	if (t) { t[a & 0xFF] = fn; bwrite_pool_intern(pg); }
++}
+ static readfunc *AReadG = NULL;
+ static writefunc *BWriteG = NULL;
+ static int RWWrap = 0;
+@@ -107,8 +168,8 @@ void FlushGenieRW(void)
+    {
+       for (x = 0; x < 0x8000; x++)
+       {
+-         ARead[x + 0x8000] = AReadG[x];
+-         BWrite[x + 0x8000] = BWriteG[x];
++         FCEU_SetReadAt(x + 0x8000, AReadG[x]);
++         FCEU_SetWriteAt(x + 0x8000, BWriteG[x]);
+       }
+       free(AReadG);
+       free(BWriteG);
+@@ -123,7 +184,7 @@ readfunc FASTAPASS(1) GetReadHandler(int32_t a)
+ 	if (a >= 0x8000 && RWWrap)
+ 		return AReadG[a - 0x8000];
+ 	else
+-		return ARead[a];
++		return FCEU_AReadAt(a);
+ }
+ 
+ void FASTAPASS(3) SetReadHandler(int32_t start, int32_t end, readfunc func)
+@@ -134,16 +195,26 @@ void FASTAPASS(3) SetReadHandler(int32_t start, int32_t end, readfunc func)
+ 		func = ANull;
+ 
+ 	if (RWWrap)
+-		for (x = end; x >= start; x--)
+-      {
+-         if (x >= 0x8000)
+-            AReadG[x - 0x8000] = func;
+-         else
+-            ARead[x] = func;
+-      }
+-	else
+-		for (x = end; x >= start; x--)
+-			ARead[x] = func;
++		for (x = end; x >= start; x--) {
++			if (x >= 0x8000)
++				AReadG[x - 0x8000] = func;
++			else
++				FCEU_SetReadAt(x, func);
++		}
++	else {
++		/* whole-page runs take the uniform fast path */
++		for (x = start; x <= end; ) {
++			if ((x & 0xFF) == 0 && end - x >= 0xFF) {
++				uint32_t pg = (x >> 8) & 0xFF;
++				fceu_aread_uni[pg] = func;
++				fceu_aread_sub[pg] = NULL;
++				x += 0x100;
++			} else {
++				FCEU_SetReadAt(x, func);
++				x++;
++			}
++		}
++	}
+ }
+ 
+ writefunc FASTAPASS(1) GetWriteHandler(int32_t a)
+@@ -151,7 +222,7 @@ writefunc FASTAPASS(1) GetWriteHandler(int32_t a)
+ 	if (RWWrap && a >= 0x8000)
+ 		return BWriteG[a - 0x8000];
+ 	else
+-		return BWrite[a];
++		return FCEU_BWriteAt(a);
+ }
+ 
+ void FASTAPASS(3) SetWriteHandler(int32_t start, int32_t end, writefunc func)
+@@ -162,16 +233,25 @@ void FASTAPASS(3) SetWriteHandler(int32_t start, int32_t end, writefunc func)
+ 		func = BNull;
+ 
+ 	if (RWWrap)
+-		for (x = end; x >= start; x--)
+-      {
++		for (x = end; x >= start; x--) {
+ 			if (x >= 0x8000)
+ 				BWriteG[x - 0x8000] = func;
+ 			else
+-				BWrite[x] = func;
++				FCEU_SetWriteAt(x, func);
+ 		}
+-	else
+-		for (x = end; x >= start; x--)
+-			BWrite[x] = func;
++	else {
++		for (x = start; x <= end; ) {
++			if ((x & 0xFF) == 0 && end - x >= 0xFF) {
++				uint32_t pg = (x >> 8) & 0xFF;
++				fceu_bwrite_uni[pg] = func;
++				fceu_bwrite_sub[pg] = NULL;
++				x += 0x100;
++			} else {
++				FCEU_SetWriteAt(x, func);
++				x++;
++			}
++		}
++	}
+ }
+ 
+ uint8_t RAM[0x800];
+diff --git a/src/fceu.h b/src/fceu.h
+index 74c9026..8337744 100644
+--- a/src/fceu.h
++++ b/src/fceu.h
+@@ -56,8 +56,25 @@ extern uint8_t MMC5HackSPPage;
+ 
+ extern uint8_t RAM[0x800];
+ 
+-extern readfunc ARead[0x10000];
+-extern writefunc BWrite[0x10000];
++/* sync32: two-level CPU bus dispatch (flat 512KB tables do not fit a
++   520KB-SRAM chip). Page-uniform fast path + shared byte subtables for
++   mixed pages. Behavior-identical to the flat arrays. */
++extern readfunc fceu_aread_uni[256];
++extern readfunc *fceu_aread_sub[256];
++extern writefunc fceu_bwrite_uni[256];
++extern writefunc *fceu_bwrite_sub[256];
++static INLINE readfunc FCEU_AReadAt(uint32_t A) {
++	uint32_t a = A & 0xFFFF;
++	readfunc *t = fceu_aread_sub[a >> 8];
++	return t ? t[a & 0xFF] : fceu_aread_uni[a >> 8];
++}
++static INLINE writefunc FCEU_BWriteAt(uint32_t A) {
++	uint32_t a = A & 0xFFFF;
++	writefunc *t = fceu_bwrite_sub[a >> 8];
++	return t ? t[a & 0xFF] : fceu_bwrite_uni[a >> 8];
++}
++void FCEU_SetReadAt(uint32_t a, readfunc fn);
++void FCEU_SetWriteAt(uint32_t a, writefunc fn);
+ 
+ extern void (*GameInterface)(int h);
+ extern void (*GameStateRestore)(int version);
+diff --git a/src/fcoeffs.h b/src/fcoeffs.h
+index 063c88b..1449804 100644
+--- a/src/fcoeffs.h
++++ b/src/fcoeffs.h
+@@ -5,32 +5,32 @@
+ 
+ static int32_t sq2coeffs[SQ2NCOEFFS];
+ 
+-static int32_t SQ2C44100NTSC[SQ2NCOEFFS / 2] =
++static const int32_t SQ2C44100NTSC[SQ2NCOEFFS / 2] =
+ {
+ 	#include "fir/c44100ntsc.h"
+ };
+ 
+-static int32_t SQ2C48000NTSC[SQ2NCOEFFS / 2] =
++static const int32_t SQ2C48000NTSC[SQ2NCOEFFS / 2] =
+ {
+ 	#include "fir/c48000ntsc.h"
+ };
+ 
+-static int32_t SQ2C96000NTSC[SQ2NCOEFFS / 2] =
++static const int32_t SQ2C96000NTSC[SQ2NCOEFFS / 2] =
+ {
+ 	#include "fir/c96000ntsc.h"
+ };
+ 
+-static int32_t SQ2C44100PAL[SQ2NCOEFFS / 2] =
++static const int32_t SQ2C44100PAL[SQ2NCOEFFS / 2] =
+ {
+ 	#include "fir/c44100pal.h"
+ };
+ 
+-static int32_t SQ2C48000PAL[SQ2NCOEFFS / 2] =
++static const int32_t SQ2C48000PAL[SQ2NCOEFFS / 2] =
+ {
+ 	#include "fir/c48000pal.h"
+ };
+ 
+-static int32_t SQ2C96000PAL[SQ2NCOEFFS / 2] =
++static const int32_t SQ2C96000PAL[SQ2NCOEFFS / 2] =
+ {
+ 	#include "fir/c96000pal.h"
+ };
+@@ -53,7 +53,7 @@ Stopband attenuation: 103.0 dB
+ 
+ Coefficients:
+ */
+-static int32_t C96000NTSC[NCOEFFS / 2] =
++static const int32_t C96000NTSC[NCOEFFS / 2] =
+ {
+ /*0*/ 65536 * 16 *  -5.9950991853042605E-6
+ /*1*/, 65536 * 16 *  -3.0394382502604395E-6
+@@ -312,7 +312,7 @@ Stopband attenuation: 114.0 dB
+ Coefficients:
+ */
+ 
+-static int32_t C96000PAL[NCOEFFS / 2] =
++static const int32_t C96000PAL[NCOEFFS / 2] =
+ {
+ /*0*/ 65536 * 16 * 3.850781559466991E-7
+ /*1*/, 65536 * 16 *  -1.280019401722687E-6
+@@ -568,7 +568,7 @@ Passband ripple: 0.1 dB
+ Transition band: 0.005625
+ Stopband attenuation: 60.0 dB
+ */
+-static int32_t C48000NTSC[NCOEFFS / 2] =
++static const int32_t C48000NTSC[NCOEFFS / 2] =
+ {
+ /*0*/ 65536 * 16 *  -1.2211019733097893E-4
+ /*1*/, 65536 * 16 * 5.374660789759626E-4
+@@ -829,7 +829,7 @@ Stopband attenuation: 66.4 dB
+ Coefficients:
+ */
+ 
+-static int32_t C44100NTSC[NCOEFFS / 2] =
++static const int32_t C44100NTSC[NCOEFFS / 2] =
+ {
+ /*0*/ 65536 * 16 * 2.7250584077004043E-4
+ /*1*/, 65536 * 16 *  -5.6651407794062126E-5
+@@ -1087,7 +1087,7 @@ Stopband attenuation: 63.0 dB
+ 
+ Coefficients:
+ */
+-static int32_t C48000PAL[NCOEFFS / 2] =
++static const int32_t C48000PAL[NCOEFFS / 2] =
+ {
+ /*0*/ 65536 * 16 *  -4.8720337170268194E-4
+ /*1*/, 65536 * 16 * 7.629902642634879E-7
+@@ -1345,7 +1345,7 @@ Stopband attenuation: 60.5 dB
+ 
+ Coefficients:
+ */
+-static int32_t C44100PAL[NCOEFFS / 2] =
++static const int32_t C44100PAL[NCOEFFS / 2] =
+ {
+ /*0*/ 65536 * 16 * 5.793783958720019E-4
+ /*1*/, 65536 * 16 * 1.0571291666629312E-4
+diff --git a/src/filter.c b/src/filter.c
+index b2272c5..a8cfae5 100644
+--- a/src/filter.c
++++ b/src/filter.c
+@@ -140,9 +140,9 @@ int32_t NeoFilterSound(int32_t *in, int32_t *out, uint32_t inlen, int32_t *lefto
+ }
+ 
+ void MakeFilters(int32_t rate) {
+-	int32_t *tabs[6] = { C44100NTSC, C44100PAL, C48000NTSC, C48000PAL, C96000NTSC,
++	const int32_t *tabs[6] = { C44100NTSC, C44100PAL, C48000NTSC, C48000PAL, C96000NTSC,
+ 					   C96000PAL };
+-	int32_t *sq2tabs[6] = { SQ2C44100NTSC, SQ2C44100PAL, SQ2C48000NTSC, SQ2C48000PAL,
++	const int32_t *sq2tabs[6] = { SQ2C44100NTSC, SQ2C44100PAL, SQ2C48000NTSC, SQ2C48000PAL,
+ 						  SQ2C96000NTSC, SQ2C96000PAL };
+ 
+ 	int32_t *tmp;
+diff --git a/src/ines.c b/src/ines.c
+index fcfd416..16b100c 100644
+--- a/src/ines.c
++++ b/src/ines.c
+@@ -479,7 +479,7 @@ typedef struct {
+ 	void (*init)(CartInfo *);
+ } BMAPPINGLocal;
+ 
+-#define INES_BOARD_BEGIN()  static BMAPPINGLocal bmap[] = {
++#define INES_BOARD_BEGIN()  static const BMAPPINGLocal bmap[] = {
+ #define INES_BOARD_END()    { (uint8_t*)"", 0, NULL} };
+ #define INES_BOARD(a, b, c) { (uint8_t*)a, b, c },
+ 
+diff --git a/src/nsf.c b/src/nsf.c
+index 3e147e5..a7f2a0f 100644
+--- a/src/nsf.c
++++ b/src/nsf.c
+@@ -366,20 +366,20 @@ static DECLFR(NSF_read) {
+ 		{
+ 			memset(RAM, 0x00, 0x800);
+ 
+-			BWrite[0x4015](0x4015, 0x0);
++			FCEU_BWriteAt(0x4015)(0x4015, 0x0);
+ 			for (x = 0; x < 0x14; x++)
+-				BWrite[0x4000 + x](0x4000 + x, 0);
+-			BWrite[0x4015](0x4015, 0xF);
++				FCEU_BWriteAt(0x4000 + x)(0x4000 + x, 0);
++			FCEU_BWriteAt(0x4015)(0x4015, 0xF);
+ 
+ 			if (NSFHeader.SoundChip & 4) {
+-				BWrite[0x4017](0x4017, 0xC0);	/* FDS BIOS writes $C0 */
+-				BWrite[0x4089](0x4089, 0x80);
+-				BWrite[0x408A](0x408A, 0xE8);
++				FCEU_BWriteAt(0x4017)(0x4017, 0xC0);	/* FDS BIOS writes $C0 */
++				FCEU_BWriteAt(0x4089)(0x4089, 0x80);
++				FCEU_BWriteAt(0x408A)(0x408A, 0xE8);
+ 			} else {
+ 				memset(ExWRAM, 0x00, 8192);
+-				BWrite[0x4017](0x4017, 0xC0);
+-				BWrite[0x4017](0x4017, 0xC0);
+-				BWrite[0x4017](0x4017, 0x40);
++				FCEU_BWriteAt(0x4017)(0x4017, 0xC0);
++				FCEU_BWriteAt(0x4017)(0x4017, 0xC0);
++				FCEU_BWriteAt(0x4017)(0x4017, 0x40);
+ 			}
+ 
+ 			if (BSon) {
+diff --git a/src/palettes/palettes.h b/src/palettes/palettes.h
+index 9b5acee..3470a68 100644
+--- a/src/palettes/palettes.h
++++ b/src/palettes/palettes.h
+@@ -4,32 +4,32 @@
+ #define EMPTY_PALETTE_64         EMPTY_PALETTE_16 EMPTY_PALETTE_16 EMPTY_PALETTE_16 EMPTY_PALETTE_16
+ #define EMPTY_PALETTE_DEEMPH_X_7 EMPTY_PALETTE_64 EMPTY_PALETTE_64 EMPTY_PALETTE_64 EMPTY_PALETTE_64 EMPTY_PALETTE_64 EMPTY_PALETTE_64 EMPTY_PALETTE_64
+ 
+-pal rp2c04_0001[512] = {
++const pal rp2c04_0001[512] = {
+  #include "rp2c04-0001.h"
+  EMPTY_PALETTE_DEEMPH_X_7
+ };
+ 
+-pal rp2c04_0002[512] = {
++const pal rp2c04_0002[512] = {
+  #include "rp2c04-0002.h"
+  EMPTY_PALETTE_DEEMPH_X_7
+ };
+ 
+-pal rp2c04_0003[512] = {
++const pal rp2c04_0003[512] = {
+  #include "rp2c04-0003.h"
+  EMPTY_PALETTE_DEEMPH_X_7
+ };
+-pal rp2c04_0004[512] = {
++const pal rp2c04_0004[512] = {
+  #include "rp2c04-0004.h"
+  EMPTY_PALETTE_DEEMPH_X_7
+ };
+ 
+-pal rp2c03[512] = {
++const pal rp2c03[512] = {
+  #include "rp2c03.h"
+  EMPTY_PALETTE_DEEMPH_X_7
+ };
+ 
+ 
+-pal unvpalette[7] = {
++const pal unvpalette[7] = {
+ 	{ 0, 0, 0 }, /* Black */
+ 	{ 255, 255, 211 }, /* White */
+ 	{ 0, 0, 0 }, /* Black */
+@@ -41,7 +41,7 @@ pal unvpalette[7] = {
+ 
+ 
+ /* Default palette */
+-pal palette[512] = {
++const pal palette[512] = {
+ 	{ 117, 117, 117 }, /* Value 0 */
+ 	{ 36, 24, 142 }, /* Value 1 */
+ 	{ 0, 0, 170 }, /* Value 2 */
+diff --git a/src/ppu.c b/src/ppu.c
+index 2a5ba88..35a8692 100644
+--- a/src/ppu.c
++++ b/src/ppu.c
+@@ -646,7 +646,7 @@ static void DoLine(void)
+ 	}
+ 
+ 	target = XBuf + ((scanline < 240 ? scanline : 240) << 8);
+-	dtarget = XDBuf + ((scanline < 240 ? scanline : 240) << 8);
++	dtarget = XDBuf;   /* sync32: single dummy row, nothing reads it */
+ 
+ 	if (MMC5Hack && (ScreenON || SpriteON)) MMC5_hb(scanline);
+ 
+@@ -1081,25 +1081,25 @@ void FCEUPPU_Power(void) {
+ 	memset(SPRAM, 0x00, 0x100);
+ 	FCEUPPU_Reset();
+ 	for (x = 0x2000; x < 0x4000; x += 8) {
+-		ARead[x] = A200x;
+-		BWrite[x] = B2000;
+-		ARead[x + 1] = A200x;
+-		BWrite[x + 1] = B2001;
+-		ARead[x + 2] = A2002;
+-		BWrite[x + 2] = B2002;
+-		ARead[x + 3] = A200x;
+-		BWrite[x + 3] = B2003;
+-		ARead[x + 4] = A200x;	/* A2004; */
+-		BWrite[x + 4] = B2004;
+-		ARead[x + 5] = A200x;
+-		BWrite[x + 5] = B2005;
+-		ARead[x + 6] = A200x;
+-		BWrite[x + 6] = B2006;
+-		ARead[x + 7] = A2007;
+-		BWrite[x + 7] = B2007;
++		FCEU_SetReadAt(x, A200x);
++		FCEU_SetWriteAt(x, B2000);
++		FCEU_SetReadAt(x + 1, A200x);
++		FCEU_SetWriteAt(x + 1, B2001);
++		FCEU_SetReadAt(x + 2, A2002);
++		FCEU_SetWriteAt(x + 2, B2002);
++		FCEU_SetReadAt(x + 3, A200x);
++		FCEU_SetWriteAt(x + 3, B2003);
++		FCEU_SetReadAt(x + 4, A200x);	/* A2004; */
++		FCEU_SetWriteAt(x + 4, B2004);
++		FCEU_SetReadAt(x + 5, A200x);
++		FCEU_SetWriteAt(x + 5, B2005);
++		FCEU_SetReadAt(x + 6, A200x);
++		FCEU_SetWriteAt(x + 6, B2006);
++		FCEU_SetReadAt(x + 7, A2007);
++		FCEU_SetWriteAt(x + 7, B2007);
+ 	}
+ 
+-	BWrite[0x4014] = B4014;
++	FCEU_SetWriteAt(0x4014, B4014);
+ }
+ 
+ 
+diff --git a/src/sound.c b/src/sound.c
+index e1c6438..d78806e 100644
+--- a/src/sound.c
++++ b/src/sound.c
+@@ -62,7 +62,13 @@ static INLINE uint32_t wl2(uint32_t idx)
+ }
+ 
+ int32_t Wave[2048 + 512];
+-int32_t WaveHi[40000];
++/* sync32: 160KB does not fit on-chip: high-quality sound allocates lazily
++   (soundq>=1 only; the console runs soundq=0/off and never touches it) */
++int32_t *WaveHi;
++int32_t fceu_wavehi_ensure(void) {
++	if (!WaveHi) WaveHi = (int32_t *)FCEU_malloc(40000 * sizeof(int32_t));
++	return WaveHi != NULL;
++}
+ int32_t WaveFinal[2048 + 512];
+ 
+ EXPSOUND GameExpSound = { 0, 0, 0, 0, 0, 0 };
+@@ -1141,7 +1147,7 @@ void FCEUSND_Power(void) {
+ 	FCEUSND_Reset();
+ 
+ 	memset(Wave, 0, sizeof(Wave));
+-	memset(WaveHi, 0, sizeof(WaveHi));
++	if (WaveHi) memset(WaveHi, 0, 40000 * sizeof(int32_t));
+ 	memset(&EnvUnits, 0, sizeof(EnvUnits));
+ 
+ 	for (x = 0; x < 5; x++)
+@@ -1247,6 +1253,8 @@ void FCEUI_SetLowPass(int q) {
+ }
+ 
+ void FCEUI_SetSoundQuality(int quality) {
++	if (quality >= 1 && !fceu_wavehi_ensure())
++		quality = 0;                    /* sync32: no RAM for hi-quality */
+ 	FSettings.soundq = quality;
+ 	SetSoundVariables();
+ }
+diff --git a/src/sound.h b/src/sound.h
+index c1f6dbf..0d9bbc1 100644
+--- a/src/sound.h
++++ b/src/sound.h
+@@ -48,7 +48,8 @@ int GetSoundBuffer(int32_t **W);
+ int FlushEmulateSound(void);
+ extern int32_t Wave[2048 + 512];
+ extern int32_t WaveFinal[2048 + 512];
+-extern int32_t WaveHi[];
++extern int32_t *WaveHi;
++int32_t fceu_wavehi_ensure(void);
+ extern uint32_t soundtsinc;
+ 
+ extern uint32_t soundtsoffs;
+diff --git a/src/video.c b/src/video.c
+index 0337c16..fb5c9ff 100644
+--- a/src/video.c
++++ b/src/video.c
+@@ -51,11 +51,15 @@ void FCEU_KillVirtualVideo(void)
+ 
+ int FCEU_InitVirtualVideo(void)
+ {
+-   /* 256 bytes per scanline, * 240 scanline maximum, +8 for alignment, */
+-   if (!XBuf)
+-      XBuf = (uint8_t*)(FCEU_malloc(256 * (256 + extrascanlines + 8)));
+-   if (!XDBuf)
+-      XDBuf = (uint8_t*)(FCEU_malloc(256 * (256 + extrascanlines + 8)));
++   /* sync32: static frame buffer (no heap headroom for 2x67KB); XDBuf is
++      write-only in this build (its reader lives in the libretro driver we
++      do not compile), so it gets one shared dummy scanline. */
++   {
++      static uint8_t xbuf_static[256 * (256 + 8)];
++      static uint8_t xdbuf_dummy[256];
++      if (!XBuf) XBuf = xbuf_static;
++      if (!XDBuf) XDBuf = xdbuf_dummy;
++   }
+ 
+    if (!XBuf || !XDBuf)
+    {
+diff --git a/src/vsuni.c b/src/vsuni.c
+index d6d823e..0e1a88f 100644
+--- a/src/vsuni.c
++++ b/src/vsuni.c
+@@ -243,7 +243,7 @@ RC2C05-04:
+ - Top Gun
+ */
+ 
+-VSUNIENTRY VSUniGames[] =
++const VSUNIENTRY VSUniGames[] =
+ {
+ 	{ "Baseball", VS_BASEBALL, 0x691d4200ea42be45LL, 99, 2, RP2C04_0001, 0, 0 },
+ 	{ "Battle City", VS_BATTLECITY, 0x8540949d74c4d0ebLL, 99, 2, RP2C04_0001, 0, 0 },
+diff --git a/src/x6502.c b/src/x6502.c
+index 61b83e0..47a1980 100644
+--- a/src/x6502.c
++++ b/src/x6502.c
+@@ -55,11 +55,11 @@ void FP_FASTAPASS(1) (*MapIRQHook)(int a);
+ }
+ 
+ static INLINE uint8_t RdMemNorm(uint32_t A) {
+-	return(_DB = ARead[A](A));
++	return(_DB = FCEU_AReadAt(A)(A));
+ }
+ 
+ static INLINE void WrMemNorm(uint32_t A, uint8_t V) {
+-	BWrite[A](A, V);
++	FCEU_BWriteAt(A)(A, V);
+ }
+ 
+ static INLINE uint8_t RdRAMFast(uint32_t A) {
+@@ -72,12 +72,12 @@ static INLINE void WrRAMFast(uint32_t A, uint8_t V) {
+ 
+ uint8_t FASTAPASS(1) X6502_DMR(uint32_t A) {
+ 	ADDCYC(1);
+-	return(X.DB = ARead[A](A));
++	return(X.DB = FCEU_AReadAt(A)(A));
+ }
+ 
+ void FASTAPASS(2) X6502_DMW(uint32_t A, uint8_t V) {
+ 	ADDCYC(1);
+-	BWrite[A](A, V);
++	FCEU_BWriteAt(A)(A, V);
+ }
+ 
+ #define PUSH(V) {									\
