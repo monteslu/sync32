@@ -126,8 +126,9 @@ class Sync32Emu:
             data = np.frombuffer(uc.mem_read(a[0], w * h), dtype=np.uint8).reshape(h, w).copy()
             s.sheets.append(data)
             s.ret(len(s.sheets) - 1)
-        elif idx == 7:    # clear(rgb565)
-            s.clear_pending = a[0] & 0xffff; s.ret()
+        elif idx == 7:    # clear(rgb565): fills the canvas NOW (firmware semantics)
+            uc.mem_write(FB_ADDR, bytes([s.nearest_idx(a[0] & 0xffff)]) * (320 * 240))
+            s.ret()
         elif idx == 8:    # sprite(sheet, sx, sy, w, h | x, y, flags on stack)
             st = s.stack_args(4)
             s.dlist.append(("spr", a[0], a[1], a[2], a[3], st[0], st[1], st[2], st[3]))
@@ -245,9 +246,6 @@ class Sync32Emu:
     def present(self):
         fbmem = np.frombuffer(bytearray(self.uc.mem_read(FB_ADDR, 320 * 240)),
                               dtype=np.uint8).reshape(240, 320)
-        if self.clear_pending is not None:
-            fbmem[:] = self.nearest_idx(self.clear_pending)
-            self.clear_pending = None
         for op in self.dlist:
             if op[0] == "rect":
                 _, x, y, w, h, c = op
@@ -273,6 +271,16 @@ class Sync32Emu:
         self.dlist = []
         self.uc.mem_write(FB_ADDR, fbmem.tobytes())
         self.frame += 1
+        if getattr(self.args, "press", None):
+            b = 0
+            for ent in self.args.press.split(","):
+                fs, name = ent.split(":")
+                f0 = int(fs)
+                if f0 <= self.frame < f0 + 6:
+                    b |= {"UP":1,"DOWN":2,"LEFT":4,"RIGHT":8,"START":0x10,
+                          "SELECT":0x20,"L":0x100,"R":0x200,"A":0x1000,
+                          "B":0x2000,"X":0x4000,"Y":0x8000}[name]
+            self.pad_buttons = b
         self.blit(fbmem)
         if not self.args.turbo:
             self.next_frame_t += 1 / 60
@@ -354,6 +362,7 @@ if __name__ == "__main__":
     ap.add_argument("--screenshot")
     ap.add_argument("--headless", action="store_true")
     ap.add_argument("--turbo", action="store_true")
+    ap.add_argument("--press", help="scripted pad, e.g. 30:DOWN,60:A (6-frame holds)")
     a = ap.parse_args()
     if a.headless:
         import os
