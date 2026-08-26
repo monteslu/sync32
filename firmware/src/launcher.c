@@ -117,14 +117,14 @@ void launcher_run(void) {
             // device probe: no PC on the USB port after 2.5s -> pad mode
             if (now_ms > 2500 && !tud_connected()) {
                 watchdog_hw->scratch[3] = 0x505AD000u;
-                watchdog_reboot(0, 0, 10);
+                watchdog_reboot(0, 0, 200);
                 while (1) tight_loop_contents();
             }
         } else if (s32_usb_pads_mounted() == 0 &&
                    now_ms - s32_usb_last_mount_ms() > 15000) {
             // host mode but nothing attached for a while: the cable may now
             // be a PC again; bounce through the device probe to find out
-            watchdog_reboot(0, 0, 10);
+            watchdog_reboot(0, 0, 200);
             while (1) tight_loop_contents();
         }
         if (video_frame_count() >= rescan_at) {
@@ -137,7 +137,7 @@ void launcher_run(void) {
         int cc = getchar_timeout_us(0);            // serial drive for the lab
         if (cc == 'h') {                       // diag: force host mode now
             watchdog_hw->scratch[3] = 0x505AD000u;
-            watchdog_reboot(0, 0, 10);
+            watchdog_reboot(0, 0, 200);
             while (1) tight_loop_contents();
         }
         if (e & S32_PAD_DOWN || cc == 'j') sel++;
@@ -176,6 +176,7 @@ void launcher_run(void) {
         draw_text12(6, 224, "A: play   X: demo   Y: usb drive", C_DIM);
         video_present();
         if ((video_frame_count() % 120) == 0)
+            watchdog_hw->scratch[0] = 0;   // forensics: alive
             printf("HEARTBEAT vframe=%lu roms=%d\n",
                    (unsigned long)video_frame_count(), n);
 

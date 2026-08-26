@@ -47,7 +47,7 @@ static void api_exit(void) {
     bool s32_usb_host_active(void);
     watchdog_hw->scratch[3] = s32_usb_host_active() ? 0x505AD000u : 0;
     watchdog_hw->scratch[5] = 0;          // no crash breadcrumb
-    watchdog_reboot(0, 0, 10);
+    watchdog_reboot(0, 0, 200);
     while (1) tight_loop_contents();
 }
 

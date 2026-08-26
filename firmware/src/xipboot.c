@@ -124,11 +124,11 @@ int s32_xip_stage_and_launch(const char *filename) {
         flash_op(false, META_FLASH_OFF, page, 256);
         // reboot into the slot: cleanest way back to full video + usb
         watchdog_hw->scratch[1] = BOOT_SLOT_FLAG;
-        watchdog_reboot(0, 0, 10);
+        watchdog_reboot(0, 0, 200);
         while (1) tight_loop_contents();
     }
     // staging failed: video/core1 are down: reboot back to the launcher
     printf("xip: stage failed %d\n", rc);
-    watchdog_reboot(0, 0, 10);
+    watchdog_reboot(0, 0, 200);
     while (1) tight_loop_contents();
 }
