@@ -1,5 +1,6 @@
 // sync32 SD: mount, list .s32 ROMs, read them, and per-game save slots.
 #include <string.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include "ff.h"
 #include "f_util.h"
@@ -10,9 +11,15 @@ static FATFS fs;
 static int mounted;
 static char game_id_hex[17];
 
+void sd_unmount_for_msc(void) {
+    if (mounted) { f_unmount(""); mounted = 0; }
+}
+
 int sd_mount(void) {
     if (mounted) return 0;
+    printf("SD: mounting...\n");
     FRESULT fr = f_mount(&fs, "", 1);
+    printf("SD: f_mount -> %d\n", (int)fr);
     if (fr != FR_OK) return -1;
     mounted = 1;
     return 0;

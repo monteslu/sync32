@@ -15,8 +15,6 @@
 
 uint8_t s32_framebuf[320 * 240];
 static uint16_t cur_palette[256];
-static uint32_t tmds_palette[6 * 256];
-static volatile int palette_dirty;
 
 // sheets: one 64KB arena
 static uint8_t sheet_arena[64 * 1024];
@@ -34,24 +32,26 @@ static int clear_pending;
 static struct dvi_inst dvi0;
 static volatile uint32_t vframe;
 
+// proven path: palette-LUT each 8bpp row to RGB565, then the same 16bpp
+// TMDS encode that ran for hours on this board in the lab demos.
+static uint16_t line16[320];
 static void __not_in_flash_func(core1_scanout)(void) {
     dvi_register_irqs_this_core(&dvi0, DMA_IRQ_0);
     dvi_start(&dvi0);
     uint y = 0;
     while (1) {
+        const uint8_t *row = &s32_framebuf[y * 320];
+        for (int x = 0; x < 320; x++) line16[x] = cur_palette[row[x]];
         uint32_t *tmdsbuf;
         queue_remove_blocking_u32(&dvi0.q_tmds_free, &tmdsbuf);
-        const uint32_t *row = (const uint32_t *)&s32_framebuf[y * 320];
-        tmds_encode_palette_data(row, tmds_palette, tmdsbuf, 320, 8);
+        uint pixwidth = dvi0.timing->h_active_pixels;
+        uint words_per_channel = pixwidth / DVI_SYMBOLS_PER_WORD;
+        const uint32_t *pix = (const uint32_t *)line16;
+        tmds_encode_data_channel_16bpp(pix, tmdsbuf + 0 * words_per_channel, pixwidth / 2, DVI_16BPP_BLUE_MSB,  DVI_16BPP_BLUE_LSB );
+        tmds_encode_data_channel_16bpp(pix, tmdsbuf + 1 * words_per_channel, pixwidth / 2, DVI_16BPP_GREEN_MSB, DVI_16BPP_GREEN_LSB);
+        tmds_encode_data_channel_16bpp(pix, tmdsbuf + 2 * words_per_channel, pixwidth / 2, DVI_16BPP_RED_MSB,   DVI_16BPP_RED_LSB  );
         queue_add_blocking_u32(&dvi0.q_tmds_valid, &tmdsbuf);
-        if (++y == 240) {
-            y = 0;
-            vframe++;
-            if (palette_dirty) {
-                palette_dirty = 0;
-                tmds_setup_palette_symbols(cur_palette, tmds_palette, 256);
-            }
-        }
+        if (++y == 240) { y = 0; vframe++; }
     }
 }
 
@@ -59,8 +59,12 @@ void video_init(void) {
     vreg_set_voltage(VREG_VOLTAGE_1_20);
     sleep_ms(10);
     set_sys_clock_khz(DVI_TIMING.bit_clk_khz, true);
-    memset(s32_framebuf, 0, sizeof s32_framebuf);
-    tmds_setup_palette_symbols(cur_palette, tmds_palette, 256);
+    // boot diagnostic: paint stripes + a default palette so the panel
+    // shows SOMETHING the instant scanout runs, before any launcher logic
+    for (int i = 0; i < 256; i++) cur_palette[i] = (uint16_t)(i * 0x0821);
+    cur_palette[1] = 0xF800; cur_palette[2] = 0xFFFF;
+    for (int y = 0; y < 240; y++)
+        memset(&s32_framebuf[y * 320], (y / 20) & 1 ? 1 : 2, 320);
     pio_set_gpio_base(DVI_DEFAULT_SERIAL_CONFIG.pio, 16);
     dvi0.timing = &DVI_TIMING;
     dvi0.ser_cfg = DVI_DEFAULT_SERIAL_CONFIG;
@@ -70,7 +74,6 @@ void video_init(void) {
 
 void video_palette(const uint16_t *p) {
     memcpy(cur_palette, p, 512);
-    palette_dirty = 1;
 }
 
 int video_sheet_load(const void *px, int w, int h) {

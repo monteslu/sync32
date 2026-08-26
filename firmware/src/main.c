@@ -5,21 +5,32 @@
 #include "pico/bootrom.h"
 #include "sync32.h"
 #include "video.h"
+#include "crash.h"
 
 extern int s32_launch(const uint8_t *rom, uint32_t size);
 extern const uint8_t embedded_rom[];
 extern const unsigned embedded_rom_len;
 
 int main(void) {
-    // crash safety: watchdog reboot with breadcrumb set = crashed game/firmware.
-    // scratch[5]==0 means a clean exit-to-launcher reboot: don't BOOTSEL.
-    if (watchdog_caused_reboot() && watchdog_hw->scratch[5] == 0xDEAD5732u)
-        reset_usb_boot(0, 0);
-    watchdog_hw->scratch[5] = 0xDEAD5732u;   // armed: cleared by clean exit
-    watchdog_enable(3000, true);
+    // watchdog: reboot-to-launcher on hang (no BOOTSEL redirect in dev)
+    watchdog_enable(5000, true);
 
-    video_init();          // also sets sysclk to the board's video clock
-    stdio_init_all();      // M1 dev build: PC on native port, no USB host
+    video_init();
+    stdio_init_all();
+    crash_handler_init();
+    const crash_info_t *ci = crash_handler_get_info();
+    if (ci && ci->magic == crash_magic_hard_fault) {
+        for (int i = 0; i < 25; i++) {
+            printf("CRASH hardfault pc=%08lx lr=%08lx psr=%08lx r0=%08lx r12=%08lx\n",
+                   (unsigned long)ci->cy_faultFrame.pc,
+                   (unsigned long)ci->cy_faultFrame.lr,
+                   (unsigned long)ci->cy_faultFrame.psr,
+                   (unsigned long)ci->cy_faultFrame.r0,
+                   (unsigned long)ci->cy_faultFrame.r12);
+            sleep_ms(200);
+        }
+    }
+    // BOOTLOG: give the lab eyes into every stage
 
     void launcher_run(void);
     launcher_run();   // never returns: games exit via chip reset
@@ -31,14 +42,16 @@ int main(void) {
 // the SCANOUT progressing AND a liveness flag present() sets.)
 #include "pico/time.h"
 static volatile uint32_t last_present_frame;
+volatile bool s32_long_op = false;      // set around mkfs/flash-writes etc
 void s32_note_present(void) { last_present_frame = video_frame_count(); }
 static bool dog_cb(struct repeating_timer *t) {
     (void)t;
-    // feed as long as scanout runs and the game presented in the last ~2s
-    if (video_frame_count() - last_present_frame < 150) watchdog_update();
+    if (s32_long_op || video_frame_count() - last_present_frame < 150)
+        watchdog_update();
     return true;
 }
 static struct repeating_timer dog_timer;
 __attribute__((constructor)) static void dog_init(void) {
     add_repeating_timer_ms(250, dog_cb, NULL, &dog_timer);
 }
+

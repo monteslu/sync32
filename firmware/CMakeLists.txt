@@ -17,12 +17,18 @@ add_executable(sync32
 	src/sdcard.c
 	src/hw_config.c
 	src/font8.c
+	src/font16.c
+	src/font12.c
+	src/usb_descriptors.c
+	src/msc_disk.c
 )
 target_compile_options(sync32 PRIVATE -Wall -O2)
 target_compile_definitions(sync32 PRIVATE
+	CFG_TUD_MSC=1
+	CFG_TUD_MSC_EP_BUFSIZE=512
+	PICO_STDIO_USB_USE_DEFAULT_DESCRIPTORS=0
 	DVI_DEFAULT_SERIAL_CONFIG=pico_sock_cfg
 	PICO_PIO_USE_GPIO_BASE=1
-	DVI_SYMBOLS_PER_WORD=1
 )
 target_include_directories(sync32 PRIVATE src ../sdk/include libdvi)
 pico_enable_stdio_usb(sync32 1)

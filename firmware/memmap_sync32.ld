@@ -261,11 +261,11 @@ SECTIONS
     .stack1_dummy (NOLOAD):
     {
         *(.stack1*)
-    } > SCRATCH_X
+    } > RAM
     .stack_dummy (NOLOAD):
     {
         KEEP(*(.stack*))
-    } > SCRATCH_Y
+    } > RAM
 
     .flash_end : {
         KEEP(*(.embedded_end_block*))
@@ -274,8 +274,8 @@ SECTIONS
 
     /* stack limit is poorly named, but historically is maximum heap ptr */
     __StackLimit = ORIGIN(RAM) + LENGTH(RAM);
-    __StackOneTop = ORIGIN(SCRATCH_X) + LENGTH(SCRATCH_X);
-    __StackTop = ORIGIN(SCRATCH_Y) + LENGTH(SCRATCH_Y);
+    __StackOneTop = ORIGIN(RAM) + LENGTH(RAM) - 4096;  /* below core0 stack */
+    __StackTop = ORIGIN(RAM) + LENGTH(RAM);          /* firmware RAM, not scratch */
     __StackOneBottom = __StackOneTop - SIZEOF(.stack1_dummy);
     __StackBottom = __StackTop - SIZEOF(.stack_dummy);
     PROVIDE(__stack = __StackTop);

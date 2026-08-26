@@ -88,6 +88,9 @@ static const sync32_api_t api_table = {
 // jump to a loaded game: PSP = game stack, thread mode switches to PSP so
 // IRQs keep running on the firmware's MSP stack.
 __attribute__((noreturn)) static void enter_game(uint32_t entry) {
+    // ensure FPU (CP10/CP11 full access) for the game context
+    *(volatile uint32_t *)0xE000ED88 |= (0xFu << 20);
+    __asm volatile("dsb; isb");
     __asm volatile(
         "msr psp, %[stack]\n"
         "mrs r3, CONTROL\n"
@@ -114,9 +117,13 @@ int s32_launch(const uint8_t *rom, uint32_t size) {
     if (s32_crc32(rom + 64, size - 64) != h->crc32) return -5;
     video_sheet_reset();
     if (h->load_mode == S32_LOAD_RAM) {
-        if (h->code_size > 0x50000 - 0x4000) return -6;
-        memmove((void *)0x20030000, rom + h->code_offset, h->code_size);  // launcher stages ROMs here: overlapping
-        enter_game(0x20030000 + h->entry_offset);
+        // rom may BE the game region (SD stages there): the memmove clobbers
+        // the header, so lift every field we still need first
+        uint32_t code_offset = h->code_offset, code_size = h->code_size;
+        uint32_t entry_offset = h->entry_offset;
+        if (code_size > 0x50000 - 0x4000) return -6;
+        memmove((void *)0x20030000, rom + code_offset, code_size);
+        enter_game(0x20030000 + entry_offset);
     }
     return -7;   // XIP mode handled by flash-slot path (M3)
 }
