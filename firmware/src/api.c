@@ -43,7 +43,9 @@ static uint32_t api_random(void) { return get_rand_32(); }
 static uint32_t api_ticks_us(void) { return time_us_32(); }
 
 static void api_exit(void) {
-    // clean chip reset back into the launcher
+    // clean chip reset back into the launcher, same usb mode
+    bool s32_usb_host_active(void);
+    watchdog_hw->scratch[3] = s32_usb_host_active() ? 0x505AD000u : 0;
     watchdog_hw->scratch[5] = 0;          // no crash breadcrumb
     watchdog_reboot(0, 0, 10);
     while (1) tight_loop_contents();

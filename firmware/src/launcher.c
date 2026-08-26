@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "pico/stdlib.h"
+#include "hardware/watchdog.h"
 #include "sync32.h"
 #include "video.h"
 #include "sdcard.h"
@@ -103,7 +104,27 @@ void launcher_run(void) {
     int n = -1, sel = 0, scroll = 0;
     int sd_state = -99;                            // force first scan
     uint32_t rescan_at = 0;
+    // dual-role usb plumbing (usb_input.c / tinyusb)
+    bool s32_usb_host_active(void);
+    int s32_usb_pads_mounted(void);
+    uint32_t s32_usb_last_mount_ms(void);
+    bool tud_connected(void);
     while (1) {
+        uint32_t now_ms = to_ms_since_boot(get_absolute_time());
+        if (!s32_usb_host_active()) {
+            // device probe: no PC on the USB port after 2.5s -> pad mode
+            if (now_ms > 2500 && !tud_connected()) {
+                watchdog_hw->scratch[3] = 0x505AD000u;
+                watchdog_reboot(0, 0, 10);
+                while (1) tight_loop_contents();
+            }
+        } else if (s32_usb_pads_mounted() == 0 &&
+                   now_ms - s32_usb_last_mount_ms() > 15000) {
+            // host mode but nothing attached for a while: the cable may now
+            // be a PC again; bounce through the device probe to find out
+            watchdog_reboot(0, 0, 10);
+            while (1) tight_loop_contents();
+        }
         if (video_frame_count() >= rescan_at) {
             rescan_at = video_frame_count() + 120;  // rescan every 2s
             int r = sd_list_roms(roms, 32);
@@ -122,6 +143,8 @@ void launcher_run(void) {
         px_rect(0, 0, 320, 22, C_BAR);
         draw_text16(6, 4, "sync32", C_TITLE);
         draw_text12(96, 6, "select a game", C_TEXT);
+        if (s32_usb_pads_mounted() > 0) draw_text12(292, 6, "PAD", C_OK);
+        else if (!s32_usb_host_active() && tud_connected()) draw_text12(299, 6, "PC", C_DIM);
         char buf[64];
         if (n < 0) {
             draw_text12(64, 102, "insert an SD card with .s32 files", C_WARN);
@@ -147,7 +170,7 @@ void launcher_run(void) {
         if ((e & S32_PAD_X) || cc == 'd') {        // built-in demo
             s32_launch(embedded_rom, embedded_rom_len);
         }
-        if ((e & S32_PAD_Y) || cc == 'u') {        // USB thumb-drive mode
+        if (((e & S32_PAD_Y) || cc == 'u') && !s32_usb_host_active()) {   // USB thumb-drive mode (needs a PC)
             void s32_msc_reset_eject(void);
             extern volatile bool s32_msc_ejected_flag;
             extern volatile uint32_t s32_msc_writes;

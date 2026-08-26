@@ -16,7 +16,13 @@ int main(void) {
     watchdog_enable(5000, true);
 
     video_init();
-    stdio_init_all();
+    // dual-role USB: scratch[3] flag = boot straight into pad (host) mode;
+    // otherwise device-probe mode (PC serial/MSC), launcher flips if no PC.
+    void s32_usb_host_start(void);
+    bool host_boot = watchdog_hw->scratch[3] == 0x505AD000u;
+    watchdog_hw->scratch[3] = 0;
+    if (host_boot) s32_usb_host_start();
+    else stdio_init_all();
     crash_handler_init();
     const crash_info_t *ci = crash_handler_get_info();
     if (ci && ci->magic == crash_magic_hard_fault) {

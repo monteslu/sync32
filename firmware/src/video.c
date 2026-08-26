@@ -163,7 +163,9 @@ static void render_list(void) {
 }
 
 void s32_note_present(void);
+void s32_usb_task(void);
 void video_present(void) {
+    s32_usb_task();
     render_list();
     uint32_t f = vframe;
     while (vframe == f) tight_loop_contents();
