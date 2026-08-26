@@ -100,7 +100,7 @@ void launcher_run(void) {
     pal[C_SELTEXT] = 0xFFE0; // yellow
     pal[C_OK] = 0x07E0;      // green
     video_palette(pal);
-    rom_entry_t roms[32];
+    static rom_entry_t roms[32];   // 2.2KB: off the stack
     int n = -1, sel = 0, scroll = 0;
     int sd_state = -99;                            // force first scan
     uint32_t rescan_at = 0;

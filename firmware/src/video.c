@@ -91,7 +91,10 @@ int video_sheet_load(const void *px, int w, int h) {
 
 void video_sheet_reset(void) { sheet_count = 0; arena_used = 0; }
 
-void video_clear(uint16_t c) { clear_color = c; clear_pending = 1; }
+static uint8_t color_to_idx(uint16_t c);
+// IMMEDIATE canvas fill (ABI semantic: clear, then canvas drawing, then
+// present must show the drawing; a deferred clear wipes it at present)
+void video_clear(uint16_t c) { memset(s32_framebuf, color_to_idx(c), sizeof s32_framebuf); }
 
 void video_sprite(int sheet, int sx, int sy, int w, int h, int x, int y, uint8_t flags) {
     if (list_n >= (int)(sizeof list / sizeof list[0])) return;
@@ -126,10 +129,6 @@ static uint8_t color_to_idx(uint16_t c) {
 }
 
 static void render_list(void) {
-    if (clear_pending) {
-        clear_pending = 0;
-        memset(s32_framebuf, color_to_idx(clear_color), sizeof s32_framebuf);
-    }
     for (int n = 0; n < list_n; n++) {
         op_t *o = &list[n];
         int x0 = o->x, y0 = o->y;

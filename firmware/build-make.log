@@ -1,7 +1,14 @@
-[  3%] Built target libdvi_tmds_encode_1bpp_pio_h
-[  3%] Built target no-OS-FatFS-SD-SDIO-SPI-RPi-Pico_rp2040_sdio_pio_h
-[  3%] Built target libdvi_dvi_serialiser_pio_h
 [  3%] Built target bs2_default
+[  3%] Built target libdvi_dvi_serialiser_pio_h
+[  3%] Built target no-OS-FatFS-SD-SDIO-SPI-RPi-Pico_rp2040_sdio_pio_h
+[  3%] Built target libdvi_tmds_encode_1bpp_pio_h
 [  5%] Built target bs2_default_library
+[  5%] Building C object CMakeFiles/sync32.dir/src/video.c.o
+/home/monteslu/code/sync32/firmware/src/video.c:30:12: warning: 'clear_pending' defined but not used [-Wunused-variable]
+   30 | static int clear_pending;
+      |            ^~~~~~~~~~~~~
+/home/monteslu/code/sync32/firmware/src/video.c:29:17: warning: 'clear_color' defined but not used [-Wunused-variable]
+   29 | static uint16_t clear_color;
+      |                 ^~~~~~~~~~~
 [  6%] Linking CXX executable sync32.elf
 [100%] Built target sync32

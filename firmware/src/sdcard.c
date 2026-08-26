@@ -27,7 +27,7 @@ int sd_mount(void) {
 
 int sd_list_roms(rom_entry_t *out, int max) {
     if (sd_mount() != 0) return -1;
-    DIR dir; FILINFO fi;
+    static DIR dir; static FILINFO fi;   // ~1.3KB of exFAT state: off the stack
     int n = 0;
     printf("scan: opendir\n");
     if (f_opendir(&dir, "/") != FR_OK) return -2;
@@ -41,7 +41,7 @@ int sd_list_roms(rom_entry_t *out, int max) {
         out[n].name[sizeof out[n].name - 1] = 0;
         out[n].size = fi.fsize;
         // read the title out of the header
-        FIL f;
+        static FIL f;
         out[n].title[0] = 0;
         printf("scan: open header %s\n", fi.fname);
         if (f_open(&f, fi.fname, FA_READ) == FR_OK) {
@@ -62,7 +62,7 @@ int sd_list_roms(rom_entry_t *out, int max) {
 
 int sd_read_rom(const char *name, uint8_t *buf, uint32_t max, uint32_t *size) {
     if (sd_mount() != 0) return -1;
-    FIL f;
+    static FIL f;
     if (f_open(&f, name, FA_READ) != FR_OK) return -2;
     UINT br;
     FRESULT fr = f_read(&f, buf, max, &br);
