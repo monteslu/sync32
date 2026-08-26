@@ -1,5 +1,5 @@
 MODE ?= ram
-SDK := ..
+SDK := ../../sdk
 NAME ?= nes
 TITLE ?= NES
 CC := arm-none-eabi-gcc

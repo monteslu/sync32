@@ -1,5 +1,5 @@
 # sync32 NES cart powered by libretro-fceumm (pinned revision), XIP mode.
-SDK := ..
+SDK := ../../sdk
 NAME := nesf
 TITLE := NES fceumm
 CORE := fceumm/src
