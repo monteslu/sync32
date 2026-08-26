@@ -1,4 +1,4 @@
-# sync32 NES cart powered by fceumm (romdev's pinned core), XIP mode.
+# sync32 NES cart powered by libretro-fceumm (pinned revision), XIP mode.
 SDK := ..
 NAME := nesf
 TITLE := NES fceumm

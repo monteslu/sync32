@@ -1,4 +1,4 @@
-// sync32 "NES fceumm" cart: romdev's pinned fceumm core, XIP mode.
+// sync32 "NES fceumm" cart: libretro-fceumm (pinned revision), XIP mode.
 // Picker lists .nes files from nesf/ via the disk API, streams the pick
 // into RAM, hands it to FCEUI_LoadGame, renders XBuf straight onto the
 // canvas (both are 8bpp palette indices: zero conversion cost).
@@ -38,7 +38,7 @@ void FCEUD_SetPalette(uint16_t index, uint8_t r, uint8_t g, uint8_t b) {
     if (index < 64) {                   // XBuf carries flag bits 6/7: mirror
         pal565[index | 0x40] = v;       // the base colors across all banks
         pal565[index | 0x80] = v;       // (deemphasis accuracy traded away,
-        pal565[index | 0xC0] = v;       //  tracked in DEBTS)
+        pal565[index | 0xC0] = v;       //  known limitation)
     }
     pal_dirty = 1;
 }

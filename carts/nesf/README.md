@@ -1,6 +1,6 @@
 # nesf: fceumm as a sync32 XIP cart
 
-Same NES core as romdev (libretro-fceumm @ 3a84a6fd, the romdev pin).
+libretro-fceumm pinned @ 3a84a6fd, patched to fit the RP2350.
 
 ## Setup
 ```

@@ -2,7 +2,7 @@ build/
 build-mac/
 __pycache__/
 *.elf
-sdk/nes/nes/
-sdk/nesf/nesf/
-sdk/nesf/fceumm/
+carts/nes/nes/
+carts/nesf/nesf/
+carts/nesf/fceumm/
 saves/

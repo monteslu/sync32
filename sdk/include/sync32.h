@@ -1,4 +1,5 @@
-// sync32 ABI v1: the permanent contract. See internal spec rom-abi-spec.
+// sync32 ABI: the permanent contract between games and the console.
+// Full specification: ABI.md in the sync32-sdk repo.
 // Games include ONLY this header. Frozen field order; additions append.
 #ifndef SYNC32_H
 #define SYNC32_H
