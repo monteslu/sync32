@@ -133,6 +133,11 @@ void launcher_run(void) {
         }
         uint16_t e = pad_edge();
         int cc = getchar_timeout_us(0);            // serial drive for the lab
+        if (cc == 'h') {                       // diag: force host mode now
+            watchdog_hw->scratch[3] = 0x505AD000u;
+            watchdog_reboot(0, 0, 10);
+            while (1) tight_loop_contents();
+        }
         if (e & S32_PAD_DOWN || cc == 'j') sel++;
         if (e & S32_PAD_UP || cc == 'k') sel--;
         if (n > 0) { if (sel < 0) sel = n - 1; if (sel >= n) sel = 0; }
@@ -146,6 +151,11 @@ void launcher_run(void) {
         if (s32_usb_pads_mounted() > 0) draw_text12(292, 6, "PAD", C_OK);
         else if (!s32_usb_host_active() && tud_connected()) draw_text12(299, 6, "PC", C_DIM);
         char buf[64];
+        snprintf(buf, sizeof buf, "boot %lu %s crash %08lx",
+                 (unsigned long)watchdog_hw->scratch[2],
+                 s32_usb_host_active() ? "pad-mode" : "pc-mode",
+                 (unsigned long)watchdog_hw->scratch[7]);
+        draw_text(6, 214, buf, C_DIM);
         if (n < 0) {
             draw_text12(64, 102, "insert an SD card with .s32 files", C_WARN);
             draw_text12(48, 126, "(FAT32 or exFAT, format on a PC)", C_DIM);

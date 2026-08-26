@@ -23,10 +23,14 @@ int main(void) {
     watchdog_hw->scratch[3] = 0;
     if (host_boot) s32_usb_host_start();
     else stdio_init_all();
+    watchdog_hw->scratch[2]++;               // boot counter (survives reboots)
     crash_handler_init();
     const crash_info_t *ci = crash_handler_get_info();
     if (ci && ci->magic == crash_magic_hard_fault) {
-        for (int i = 0; i < 25; i++) {
+        watchdog_hw->scratch[6] = ci->magic;  // breadcrumb for the on-screen diag
+        watchdog_hw->scratch[7] = ci->cy_faultFrame.pc;
+        for (int i = 0; i < 8; i++) {
+            watchdog_update();
             printf("CRASH hardfault pc=%08lx lr=%08lx psr=%08lx r0=%08lx r12=%08lx\n",
                    (unsigned long)ci->cy_faultFrame.pc,
                    (unsigned long)ci->cy_faultFrame.lr,
