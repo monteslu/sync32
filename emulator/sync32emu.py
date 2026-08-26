@@ -317,6 +317,11 @@ class Sync32Emu:
                           "SELECT":0x20,"L":0x100,"R":0x200,"A":0x1000,
                           "B":0x2000,"X":0x4000,"Y":0x8000}[name]
             self.pad_buttons = b
+        if self.video_mode == 1:   # 320x180 letterbox: game rows 0..179 centered
+            import numpy as _np
+            disp = _np.zeros((240, 320), dtype=_np.uint8)
+            disp[30:210] = fbmem[:180]
+            fbmem = disp
         self.blit(fbmem)
         if not self.args.turbo:
             self.next_frame_t += 1 / 60

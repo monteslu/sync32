@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <sys/stat.h>
 
-static uint8_t arena[98 * 1024] __attribute__((aligned(8)));
+static uint8_t arena[94 * 1024] __attribute__((aligned(8)));
 static uint8_t *brk = arena;
 
 void *_sbrk(ptrdiff_t incr) {

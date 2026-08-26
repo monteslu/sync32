@@ -41,10 +41,10 @@ index a290569..7f9c792 100644
  	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7e,0x81,0xa5,0x81,0xbd,0x99,0x81,0x7e,0x7e,0xff,0xdb,0xff,0xc3,0xe7,0xff,0x7e,0x36,0x7f,0x7f,0x7f,0x3e,0x1c,0x08,0x00,
  	0x08,0x1c,0x3e,0x7f,0x3e,0x1c,0x08,0x00,0x1c,0x3e,0x1c,0x7f,0x7f,0x3e,0x1c,0x3e,0x08,0x08,0x1c,0x3e,0x7f,0x3e,0x1c,0x3e,0x00,0x00,0x18,0x3c,0x3c,0x18,0x00,0x00,
 diff --git a/src/fceu.c b/src/fceu.c
-index ba1706a..c686cfe 100644
+index ba1706a..8be391d 100644
 --- a/src/fceu.c
 +++ b/src/fceu.c
-@@ -54,8 +54,69 @@ void (*GameInterface)(int h);
+@@ -54,8 +54,75 @@ void (*GameInterface)(int h);
  
  void (*GameStateRestore)(int version);
  
@@ -64,7 +64,10 @@ index ba1706a..c686cfe 100644
 +	int i;
 +	readfunc *t;
 +	if (fceu_aread_sub[pg]) return fceu_aread_sub[pg];
-+	if (fceu_aread_pool_n >= FCEU_DISP_POOL) return NULL; /* out of pool */
++	if (fceu_aread_pool_n >= FCEU_DISP_POOL) {
++		FCEU_PrintError("dispatch pool exhausted (read)"); /* NEVER silent */
++		return NULL;
++	}
 +	t = fceu_aread_pool[fceu_aread_pool_n++];
 +	for (i = 0; i < 256; i++) t[i] = fceu_aread_uni[pg];
 +	fceu_aread_sub[pg] = t;
@@ -74,7 +77,10 @@ index ba1706a..c686cfe 100644
 +	int i;
 +	writefunc *t;
 +	if (fceu_bwrite_sub[pg]) return fceu_bwrite_sub[pg];
-+	if (fceu_bwrite_pool_n >= FCEU_DISP_POOL) return NULL;
++	if (fceu_bwrite_pool_n >= FCEU_DISP_POOL) {
++		FCEU_PrintError("dispatch pool exhausted (write)");
++		return NULL;
++	}
 +	t = fceu_bwrite_pool[fceu_bwrite_pool_n++];
 +	for (i = 0; i < 256; i++) t[i] = fceu_bwrite_uni[pg];
 +	fceu_bwrite_sub[pg] = t;
@@ -116,7 +122,7 @@ index ba1706a..c686cfe 100644
  static readfunc *AReadG = NULL;
  static writefunc *BWriteG = NULL;
  static int RWWrap = 0;
-@@ -107,8 +168,8 @@ void FlushGenieRW(void)
+@@ -107,8 +174,8 @@ void FlushGenieRW(void)
     {
        for (x = 0; x < 0x8000; x++)
        {
@@ -127,7 +133,7 @@ index ba1706a..c686cfe 100644
        }
        free(AReadG);
        free(BWriteG);
-@@ -123,7 +184,7 @@ readfunc FASTAPASS(1) GetReadHandler(int32_t a)
+@@ -123,7 +190,7 @@ readfunc FASTAPASS(1) GetReadHandler(int32_t a)
  	if (a >= 0x8000 && RWWrap)
  		return AReadG[a - 0x8000];
  	else
@@ -136,7 +142,7 @@ index ba1706a..c686cfe 100644
  }
  
  void FASTAPASS(3) SetReadHandler(int32_t start, int32_t end, readfunc func)
-@@ -134,16 +195,26 @@ void FASTAPASS(3) SetReadHandler(int32_t start, int32_t end, readfunc func)
+@@ -134,16 +201,26 @@ void FASTAPASS(3) SetReadHandler(int32_t start, int32_t end, readfunc func)
  		func = ANull;
  
  	if (RWWrap)
@@ -173,7 +179,7 @@ index ba1706a..c686cfe 100644
  }
  
  writefunc FASTAPASS(1) GetWriteHandler(int32_t a)
-@@ -151,7 +222,7 @@ writefunc FASTAPASS(1) GetWriteHandler(int32_t a)
+@@ -151,7 +228,7 @@ writefunc FASTAPASS(1) GetWriteHandler(int32_t a)
  	if (RWWrap && a >= 0x8000)
  		return BWriteG[a - 0x8000];
  	else
@@ -182,7 +188,7 @@ index ba1706a..c686cfe 100644
  }
  
  void FASTAPASS(3) SetWriteHandler(int32_t start, int32_t end, writefunc func)
-@@ -162,16 +233,25 @@ void FASTAPASS(3) SetWriteHandler(int32_t start, int32_t end, writefunc func)
+@@ -162,16 +239,25 @@ void FASTAPASS(3) SetWriteHandler(int32_t start, int32_t end, writefunc func)
  		func = BNull;
  
  	if (RWWrap)

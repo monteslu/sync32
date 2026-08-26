@@ -22,10 +22,13 @@
 #define META_MAGIC       0x58495053u            // "SPIX"
 #define BOOT_SLOT_FLAG   0x58495042u            // scratch[1]: boot staged slot
 
+extern volatile uint8_t s32_video_mode;
 typedef struct {
     uint32_t magic, crc32, code_size, entry_offset;
     char filename[40];                  // for the game's disk dir + saves
     uint8_t game_id[8];
+    uint8_t video_mode;
+    uint8_t pad_[3];
 } xip_meta_t;
 
 extern volatile bool s32_long_op;
@@ -51,6 +54,7 @@ void s32_xip_boot_check(void) {
     void s32_disk_set_dir(const char *rom_filename);
     s32_disk_set_dir((const char *)meta->filename);
     sd_set_game_id((const uint8_t *)meta->game_id);
+    s32_video_mode = meta->video_mode == 1 ? 1 : 0;
     printf("xip: booting staged slot entry=%08lx\n",
            (unsigned long)(SLOT_XIP_ADDR + meta->entry_offset));
     s32_enter_game(SLOT_XIP_ADDR + meta->entry_offset);
@@ -66,6 +70,7 @@ int s32_xip_stage_and_launch(const char *filename) {
     if (f_read(&f, hdr, 64, &br) != FR_OK || br != 64) { f_close(&f); return -3; }
     const s32_header_t *h = (const s32_header_t *)hdr;
     if (h->magic != S32_MAGIC || h->load_mode != S32_LOAD_XIP) { f_close(&f); return -4; }
+    s32_video_mode = h->video_mode == 1 ? 1 : 0;
     // v1 XIP contract: payload is exactly the code image
     if (h->code_offset != 64 || h->rom_size != 64 + h->code_size ||
         h->code_size > SLOT_MAX) { f_close(&f); return -5; }
@@ -108,9 +113,10 @@ int s32_xip_stage_and_launch(const char *filename) {
         rc = -7;
 
     if (rc == 0) {
-        xip_meta_t m = { META_MAGIC, crc_want, code_size, entry_offset, {0}, {0} };
+        xip_meta_t m = { META_MAGIC, crc_want, code_size, entry_offset, {0}, {0}, 0, {0} };
         strncpy(m.filename, filename, sizeof m.filename - 1);
         memcpy(m.game_id, hdr + 48, 8);
+        m.video_mode = hdr[29];
         uint8_t page[256];
         memset(page, 0xff, sizeof page);
         memcpy(page, &m, sizeof m);

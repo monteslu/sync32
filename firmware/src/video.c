@@ -10,6 +10,7 @@
 #include "common_dvi_pin_configs.h"
 #include "tmds_encode.h"
 #include "video.h"
+#include "hardware/watchdog.h"
 
 #define DVI_TIMING dvi_timing_640x480p_60hz
 
@@ -35,13 +36,19 @@ static volatile uint32_t vframe;
 // proven path: palette-LUT each 8bpp row to RGB565, then the same 16bpp
 // TMDS encode that ran for hours on this board in the lab demos.
 static uint16_t line16[320];
+volatile uint8_t s32_video_mode;        // 0 = 320x240, 1 = 320x180 letterbox
 static void __not_in_flash_func(core1_scanout)(void) {
     dvi_register_irqs_this_core(&dvi0, DMA_IRQ_0);
     dvi_start(&dvi0);
     uint y = 0;
     while (1) {
-        const uint8_t *row = &s32_framebuf[y * 320];
-        for (int x = 0; x < 320; x++) line16[x] = cur_palette[row[x]];
+        if (s32_video_mode == 1 && (y < 30 || y >= 210)) {
+            for (int x = 0; x < 320; x++) line16[x] = 0;   // letterbox bars
+        } else {
+            uint srcy = s32_video_mode == 1 ? y - 30 : y;
+            const uint8_t *row = &s32_framebuf[srcy * 320];
+            for (int x = 0; x < 320; x++) line16[x] = cur_palette[row[x]];
+        }
         uint32_t *tmdsbuf;
         queue_remove_blocking_u32(&dvi0.q_tmds_free, &tmdsbuf);
         uint pixwidth = dvi0.timing->h_active_pixels;
@@ -56,9 +63,13 @@ static void __not_in_flash_func(core1_scanout)(void) {
 }
 
 void video_init(void) {
+    #define VSTAGE(n) (watchdog_hw->scratch[2] = 0x57A6E100u | (n))
+    VSTAGE(1);
     vreg_set_voltage(VREG_VOLTAGE_1_20);
     sleep_ms(10);
+    VSTAGE(2);
     set_sys_clock_khz(DVI_TIMING.bit_clk_khz, true);
+    VSTAGE(3);
     // boot diagnostic: paint stripes + a default palette so the panel
     // shows SOMETHING the instant scanout runs, before any launcher logic
     for (int i = 0; i < 256; i++) cur_palette[i] = (uint16_t)(i * 0x0821);
@@ -68,8 +79,12 @@ void video_init(void) {
     pio_set_gpio_base(DVI_DEFAULT_SERIAL_CONFIG.pio, 16);
     dvi0.timing = &DVI_TIMING;
     dvi0.ser_cfg = DVI_DEFAULT_SERIAL_CONFIG;
+    VSTAGE(4);
     dvi_init(&dvi0, next_striped_spin_lock_num(), next_striped_spin_lock_num());
+    VSTAGE(5);
+    VSTAGE(6);
     multicore_launch_core1(core1_scanout);
+    VSTAGE(7);
 }
 
 void video_palette(const uint16_t *p) {

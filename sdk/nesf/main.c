@@ -40,7 +40,14 @@ const uint8_t *GetKeyboard(void) {      // family keyboard: not present
     static const uint8_t none[256];
     return none;
 }
-void FCEUD_PrintError(const char *s) { (void)s; }
+static char last_err[48];
+static int err_frames;
+void FCEUD_PrintError(const char *s) {
+    int i = 0;
+    for (; s[i] && i < 47; i++) last_err[i] = s[i];
+    last_err[i] = 0;
+    err_frames = 240;                    // show for 4 seconds
+}
 void FCEUD_Message(const char *s) { (void)s; }
 void FCEUD_DispMessage(enum retro_log_level level, unsigned duration, const char *str) {
     (void)level; (void)duration; (void)str;
@@ -148,11 +155,23 @@ static void run_game(int idx) {
         FCEUI_Emulate(&gfx, &snd, &ssize, 0);
 
         if (pal_dirty) { pal_dirty = 0; ui_palette(); }
+        if (err_frames > 0) err_frames--;
         uint8_t *fb = ab->canvas();
         for (int y = 0; y < 240; y++)
             memcpy(fb + y * 320 + NES_X, gfx + y * 256, 256);
+        if (err_frames > 0) draw_text(8, 230, last_err, UI_ERR);
         ab->canvas_mark(0, 240);
         ab->present();
+
+        if (ssize > 0) {                 // core gives int32 mono: ABI wants int16 stereo
+            static int16_t lr[2048];
+            int n = ssize > 1024 ? 1024 : ssize;
+            for (int i = 0; i < n; i++) {
+                int16_t v = (int16_t)snd[i];
+                lr[i * 2] = v; lr[i * 2 + 1] = v;
+            }
+            if (ab->audio_space() >= n) ab->audio_push(lr, n);
+        }
     }
     FCEUI_CloseGame();
 }
@@ -166,7 +185,7 @@ void game_main(const sync32_api_t *api) {
     if (!FCEUI_Initialize()) {
         for (;;) { ab->clear(0xF800); ab->present(); }
     }
-    FCEUI_Sound(0);                     // v1: silent console anyway
+    FCEUI_Sound(48000);                 // ABI rate; rate 0 wedges sound-table init
 
     int n = scan_roms();
     int sel = 0, scroll = 0;

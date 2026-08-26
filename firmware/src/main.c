@@ -12,17 +12,39 @@ extern const uint8_t embedded_rom[];
 extern const unsigned embedded_rom_len;
 
 int main(void) {
+    // BOOTBUG stage harness: previous boot's last stage -> flash sentinel,
+    // auto-BOOTSEL when the previous boot died before going alive
+    {
+        extern void flash_range_erase(uint32_t, unsigned int);
+        extern void flash_range_program(uint32_t, const uint8_t *, unsigned int);
+        uint32_t page[64];
+        for (int i = 0; i < 64; i++) page[i] = 0xFFFFFFFFu;
+        page[0] = watchdog_hw->scratch[2];
+        flash_range_erase(0xFE000, 4096);
+        flash_range_program(0xFE000, (const uint8_t *)page, 256);
+        if (watchdog_hw->scratch[0] == 0xDEADB007u) {
+            watchdog_hw->scratch[0] = 0;
+            reset_usb_boot(0, 0);
+        }
+        watchdog_hw->scratch[0] = 0xDEADB007u;
+    }
+    #define STAGE(n) (watchdog_hw->scratch[2] = 0x57A6E000u | (n))
+    STAGE(1);
     // watchdog: reboot-to-launcher on hang (no BOOTSEL redirect in dev)
     watchdog_enable(5000, true);
+    STAGE(2);
 
     video_init();
+    STAGE(3);
     // dual-role USB: scratch[3] flag = boot straight into pad (host) mode;
     // otherwise device-probe mode (PC serial/MSC), launcher flips if no PC.
     void s32_usb_host_start(void);
     bool host_boot = watchdog_hw->scratch[3] == 0x505AD000u;
     watchdog_hw->scratch[3] = 0;
+    STAGE(4);
     if (host_boot) s32_usb_host_start();
     else stdio_init_all();
+    STAGE(5);
     watchdog_hw->scratch[2]++;               // boot counter (survives reboots)
     crash_handler_init();
     const crash_info_t *ci = crash_handler_get_info();

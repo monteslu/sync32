@@ -230,7 +230,7 @@ SECTIONS
     } > RAM
     /* historically on GCC sbrk was growing past __HeapLimit to __StackLimit, however
        to be more compatible, we now set __HeapLimit explicitly to where the end of the heap is */
-    __HeapLimit = ORIGIN(RAM) + LENGTH(RAM) - 0x2000;   /* below both stacks */
+    __HeapLimit = ORIGIN(RAM) + LENGTH(RAM) - 0x1800;   /* below both stacks */
 
     /* Start and end symbols must be word-aligned */
     .scratch_x : {
@@ -264,7 +264,7 @@ SECTIONS
      * the heap, and exFAT mallocs grew into it (scanout death, stripes,
      * boot loop, 2026-08-25). Core0's SP starts at __StackTop and grows
      * down into .stack_dummy's region. */
-    .stack1_dummy ORIGIN(RAM) + LENGTH(RAM) - 0x2000 (NOLOAD):
+    .stack1_dummy ORIGIN(RAM) + LENGTH(RAM) - 0x1800 (NOLOAD):
     {
         *(.stack1*)
     } > RAM
@@ -279,7 +279,10 @@ SECTIONS
     } > FLASH =0xaa
 
     /* stack limit is poorly named, but historically is maximum heap ptr */
-    __StackLimit = ORIGIN(RAM) + LENGTH(RAM) - 0x2000;  /* heap may not touch stacks */
+    __StackLimit = ORIGIN(RAM) + LENGTH(RAM) - 0x1800;  /* heap may not touch stacks */
+    /* exFAT dir ops malloc ~3KB; a squeezed heap used to become an
+       Out-of-memory PANIC loop that looked like a dead board. Never again: */
+    ASSERT(__HeapLimit - __end__ >= 0x1800, "firmware heap under 6KB: shrink bss")
     __StackOneTop = ORIGIN(RAM) + LENGTH(RAM) - 4096;  /* below core0 stack */
     __StackTop = ORIGIN(RAM) + LENGTH(RAM);          /* firmware RAM, not scratch */
     __StackOneBottom = __StackOneTop - SIZEOF(.stack1_dummy);

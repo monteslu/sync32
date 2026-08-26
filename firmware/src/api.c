@@ -129,6 +129,7 @@ __attribute__((noreturn)) static void enter_game_asm(uint32_t entry) {
 
 // validate + launch a .s32 image sitting in a buffer (RAM mode) or XIP slot
 #include "s32crc.h"
+extern volatile uint8_t s32_video_mode;
 int s32_launch(const uint8_t *rom, uint32_t size) {
     if (size < 64) return -1;
     const s32_header_t *h = (const s32_header_t *)rom;
@@ -142,6 +143,7 @@ int s32_launch(const uint8_t *rom, uint32_t size) {
         // the header, so lift every field we still need first
         uint32_t code_offset = h->code_offset, code_size = h->code_size;
         uint32_t entry_offset = h->entry_offset;
+        s32_video_mode = h->video_mode == 1 ? 1 : 0;
         if (code_size > 0x50000 - 0x4000) return -6;
         memmove((void *)0x20030000, rom + code_offset, code_size);
         enter_game_asm(0x20030000 + entry_offset);
