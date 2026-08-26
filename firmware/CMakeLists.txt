@@ -15,6 +15,7 @@ add_executable(sync32
 	src/embedded_rom.c
 	src/launcher.c
 	src/sdcard.c
+	src/disk.c
 	src/hw_config.c
 	src/font8.c
 	src/font16.c

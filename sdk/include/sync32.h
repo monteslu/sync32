@@ -6,7 +6,7 @@
 
 #define S32_MAGIC        0x32335953u   // "SY32" little-endian
 #define S32_HEADER_VERSION 1
-#define S32_API_VERSION    1
+#define S32_API_VERSION    2
 
 // header flags / modes
 #define S32_LOAD_RAM     0
@@ -35,6 +35,17 @@
 #define S32_MAX_SPRITES 128
 #define S32_SAVE_SLOTS 8
 #define S32_SAVE_MAX 65536
+
+// disk (api v2): read-only streaming from the game's own data directory,
+// "<romname>/" beside the .s32 file. Plain filenames only, no paths.
+#define S32_DISK_MAX_OPEN 4
+#define S32_DISK_NAME_MAX 32
+#define S32_DISK_EOK       0
+#define S32_DISK_ENOENT   -1   // no such file / end of listing
+#define S32_DISK_ENFILE   -2   // too many open files
+#define S32_DISK_EBADF    -3   // bad fd
+#define S32_DISK_EIO      -4   // media error / no card / no data dir
+#define S32_DISK_EINVAL   -5   // bad name or argument
 
 typedef struct {
   uint16_t buttons;
@@ -71,6 +82,16 @@ typedef struct {
   int      (*save_read)(int slot, void *buf, int max);
   int      (*save_write)(int slot, const void *buf, int len);
   // v1 ends here; future functions append below with bumped S32_API_VERSION
+  // ---- api v2: disk streaming (read-only, sandboxed to the game's dir) ----
+  // enumerate: index 0.. until S32_DISK_ENOENT; name_out has room for
+  // S32_DISK_NAME_MAX bytes (NUL included), size_out may be NULL
+  int      (*disk_list)(int index, char *name_out, uint32_t *size_out);
+  int      (*disk_open)(const char *name);            // fd >= 0, or error
+  int      (*disk_size)(int fd);
+  int      (*disk_seek)(int fd, uint32_t offset);
+  int      (*disk_read)(int fd, void *dst, uint32_t len);  // bytes read
+  int      (*disk_close)(int fd);
+  // v2 ends here
 } sync32_api_t;
 
 // the one symbol a ROM exports:

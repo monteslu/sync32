@@ -218,6 +218,8 @@ void launcher_run(void) {
             if (sd_read_rom(roms[sel].name, ROM_BUF, ROM_BUF_MAX, &size) == 0) {
                 const s32_header_t *h = (const s32_header_t *)ROM_BUF;
                 sd_set_game_id(h->game_id);
+                void s32_disk_set_dir(const char *rom_filename);
+                s32_disk_set_dir(roms[sel].name);
                 int r = s32_launch(ROM_BUF, size);  // no return on success
                 printf("launch failed: %d\n", r);
             } else printf("read failed\n");

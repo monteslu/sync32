@@ -65,6 +65,14 @@ int __attribute__((weak)) s32_save_write(int slot, const void *buf, int len) {
 
 static int api_sheet_load(const void *p, int w, int h) { return video_sheet_load(p, w, h); }
 
+// api v2 disk (disk.c)
+int s32_disk_list(int index, char *name_out, uint32_t *size_out);
+int s32_disk_open(const char *name);
+int s32_disk_size(int fd);
+int s32_disk_seek(int fd, uint32_t offset);
+int s32_disk_read(int fd, void *dst, uint32_t len);
+int s32_disk_close(int fd);
+
 static const sync32_api_t api_table = {
     .api_version = S32_API_VERSION,
     .exit = api_exit,
@@ -85,6 +93,12 @@ static const sync32_api_t api_table = {
     .audio_push = api_audio_push,
     .save_read = s32_save_read,
     .save_write = s32_save_write,
+    .disk_list = s32_disk_list,
+    .disk_open = s32_disk_open,
+    .disk_size = s32_disk_size,
+    .disk_seek = s32_disk_seek,
+    .disk_read = s32_disk_read,
+    .disk_close = s32_disk_close,
 };
 
 // jump to a loaded game: PSP = game stack, thread mode switches to PSP so

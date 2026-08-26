@@ -18,6 +18,7 @@ ap.add_argument("--title", default="untitled")
 ap.add_argument("--id", default="00000000")
 ap.add_argument("--mode", choices=["ram", "xip"], default="ram")
 ap.add_argument("--video", choices=["240", "180"], default="240")
+ap.add_argument("--api", type=int, default=1, help="minimum api_version required")
 a = ap.parse_args()
 
 img = subprocess.run(["arm-none-eabi-objcopy", "-O", "binary", a.elf, "/dev/stdout"],
@@ -28,7 +29,7 @@ entry_off = entry - base
 assert 0 <= entry_off < len(img), f"entry {entry:#x} outside image"
 
 hdr = struct.pack("<IHHIIIII BBBB 16s 8s 8s".replace(" ", ""),
-    0x32335953, 1, 1,
+    0x32335953, 1, a.api,
     64 + len(img), zlib.crc32(img) & 0xffffffff,
     64, len(img), entry_off,
     0 if a.mode == "ram" else 1,

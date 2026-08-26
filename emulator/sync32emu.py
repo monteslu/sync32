@@ -44,9 +44,9 @@ class Sync32Emu:
             uc.mem_write(base, img)
         self.entry = base + eoff
 
-        # api table: u16 version, u16 pad, 18 function pointers
-        n_funcs = 18
-        tbl = struct.pack("<HH", 1, 0) + b"".join(
+        # api table: u16 version, u16 pad, then the function pointers
+        n_funcs = 24
+        tbl = struct.pack("<HH", 2, 0) + b"".join(
             struct.pack("<I", (API_FUNCS + i * 4) | 1) for i in range(n_funcs))
         uc.mem_write(API_TABLE, tbl)
         uc.mem_write(API_FUNCS, b"\x00\xbf" * (n_funcs * 2))   # nops (never executed)
@@ -64,6 +64,8 @@ class Sync32Emu:
         self.pcg_state = 0
         self.running = True
         self.save_dir = pathlib.Path("saves") / self.game_id
+        self.data_dir = pathlib.Path(rom_path).with_suffix("")   # "<romname>/"
+        self.disk_fds = [None, None, None, None]
         self.screen = None
         if not args.headless:
             import pygame
@@ -161,8 +163,71 @@ class Sync32Emu:
                 (s.save_dir / f"slot{a[0]}.bin").write_bytes(bytes(uc.mem_read(a[1], a[2])))
                 s.ret(a[2])
             else: s.ret(-1)
+        elif idx == 18:   # disk_list(index, name_out, size_out)
+            fs = s.disk_files()
+            if fs is None: s.ret(-4)
+            elif a[0] < 0 or a[1] == 0: s.ret(-5)
+            elif a[0] >= len(fs): s.ret(-1)
+            else:
+                f = fs[a[0]]
+                nm = f.name.encode()[:31] + b"\0"
+                uc.mem_write(a[1], nm)
+                if a[2]: uc.mem_write(a[2], struct.pack("<I", f.stat().st_size))
+                s.ret(0)
+        elif idx == 19:   # disk_open(name)
+            nm = s.read_cstr(a[0])
+            if nm is None or "/" in nm or "\\" in nm or ".." in nm or not nm:
+                s.ret(-5)
+            elif s.disk_files() is None: s.ret(-4)
+            else:
+                p = s.data_dir / nm
+                if not p.is_file(): s.ret(-1)
+                else:
+                    fd = next((i for i in range(4) if s.disk_fds[i] is None), None)
+                    if fd is None: s.ret(-2)
+                    else:
+                        s.disk_fds[fd] = open(p, "rb")
+                        s.ret(fd)
+        elif idx == 20:   # disk_size(fd)
+            f = s.disk_fd(a[0])
+            if f is None: s.ret(-3)
+            else:
+                pos = f.tell(); f.seek(0, 2); sz = f.tell(); f.seek(pos)
+                s.ret(sz)
+        elif idx == 21:   # disk_seek(fd, offset)
+            f = s.disk_fd(a[0])
+            if f is None: s.ret(-3)
+            else: f.seek(a[1]); s.ret(0)
+        elif idx == 22:   # disk_read(fd, dst, len)
+            f = s.disk_fd(a[0])
+            if f is None: s.ret(-3)
+            elif a[1] == 0: s.ret(-5)
+            else:
+                d = f.read(a[2])
+                if d: uc.mem_write(a[1], d)
+                s.ret(len(d))
+        elif idx == 23:   # disk_close(fd)
+            f = s.disk_fd(a[0])
+            if f is None: s.ret(-3)
+            else:
+                f.close(); s.disk_fds[a[0]] = None; s.ret(0)
         else:
             s.ret(0)
+
+    # ---- disk (api v2): sandbox = "<romname>/" beside the .s32 ----
+    def disk_files(self):
+        if not self.data_dir.is_dir(): return None
+        return sorted(p for p in self.data_dir.iterdir() if p.is_file())
+
+    def disk_fd(self, fd):
+        return self.disk_fds[fd] if 0 <= fd < 4 else None
+
+    def read_cstr(self, addr, maxlen=64):
+        try:
+            raw = bytes(self.uc.mem_read(addr, maxlen))
+            return raw.split(b"\0")[0].decode(errors="replace")
+        except Exception:
+            return None
 
     # ---- video ----
     @staticmethod
