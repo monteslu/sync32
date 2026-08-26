@@ -71,6 +71,9 @@ class Sync32Emu:
         self.save_dir = pathlib.Path("saves") / self.game_id
         self.data_dir = pathlib.Path(rom_path).with_suffix("")   # "<romname>/"
         self.disk_fds = [None, None, None, None]
+        self.audio = bytearray()
+        self.audio_cursor = 0
+        self.mixer = None
         self.screen = None
         if not args.headless:
             import pygame
@@ -155,7 +158,11 @@ class Sync32Emu:
             s.ret()
         elif idx == 14:   # audio_space
             s.ret(4096)
-        elif idx == 15:   # audio_push
+        elif idx == 15:   # audio_push(lr*, frames)
+            n = a[1] & 0xffff
+            if n and a[0]:
+                s.audio.extend(uc.mem_read(a[0], n * 4))
+                s.audio_play()
             s.ret()
         elif idx == 16:   # save_read(slot, buf, max)
             p = s.save_dir / f"slot{a[0]}.bin"
@@ -235,6 +242,30 @@ class Sync32Emu:
         except Exception:
             return None
 
+    # ---- audio ----
+    def audio_play(self):
+        if self.args.headless or self.screen is None: return
+        pg = self.pygame
+        try:
+            if self.mixer is None:
+                pg.mixer.init(frequency=48000, size=-16, channels=2, buffer=1024)
+                self.mixer = pg.mixer.Channel(0)
+            pending = len(self.audio) - self.audio_cursor
+            if pending >= 4096 and not self.mixer.get_queue():
+                chunk = bytes(self.audio[self.audio_cursor:self.audio_cursor + 8192])
+                self.audio_cursor += len(chunk)
+                self.mixer.queue(pg.mixer.Sound(buffer=chunk))
+        except Exception:
+            pass
+
+    def save_wav(self, path):
+        import wave
+        w = wave.open(path, "wb")
+        w.setnchannels(2); w.setsampwidth(2); w.setframerate(48000)
+        w.writeframes(bytes(self.audio))
+        w.close()
+        print(f"wav: {path} ({len(self.audio)//4} frames)")
+
     # ---- video ----
     @staticmethod
     def to_int(v, bits=16):
@@ -292,6 +323,11 @@ class Sync32Emu:
             dt = self.next_frame_t - time.perf_counter()
             if dt > 0: time.sleep(dt)
             else: self.next_frame_t = time.perf_counter()
+        if self.frame % 10 == 0:
+            if getattr(self.args, "headless", False):
+                print(f"frame {self.frame}", flush=True)
+            if self.args.screenshot:
+                self.save_png(fbmem, self.args.screenshot)
         if self.args.frames and self.frame >= self.args.frames:
             if self.args.screenshot: self.save_png(fbmem, self.args.screenshot)
             self.running = False
@@ -350,6 +386,16 @@ class Sync32Emu:
         self.uc.reg_write(UC_ARM_REG_R0, API_TABLE)
         self.uc.reg_write(UC_ARM_REG_LR, (API_FUNCS) | 1)  # returning = exit
         print(f"sync32emu: '{self.title}' entry={self.entry:#x} mode={'180p' if self.video_mode else '240p'}")
+        if getattr(self.args, "profile", False):
+            import threading
+            def sampler():
+                while self.running:
+                    time.sleep(2)
+                    try:
+                        print(f"pc={self.uc.reg_read(UC_ARM_REG_PC):#010x} frame={self.frame}", flush=True)
+                    except Exception:
+                        pass
+            threading.Thread(target=sampler, daemon=True).start()
         while self.running:
             try:
                 self.uc.emu_start(self.entry | 1, 0, count=0)
@@ -357,6 +403,8 @@ class Sync32Emu:
             except Exception as e:
                 print("emulation stopped:", e)
                 break
+        if getattr(self.args, "wav", None) and self.audio:
+            self.save_wav(self.args.wav)
         print(f"exited after {self.frame} frames")
 
 if __name__ == "__main__":
@@ -368,6 +416,8 @@ if __name__ == "__main__":
     ap.add_argument("--headless", action="store_true")
     ap.add_argument("--turbo", action="store_true")
     ap.add_argument("--press", help="scripted pad, e.g. 30:DOWN,60:A (6-frame holds)")
+    ap.add_argument("--wav", help="write pushed audio to this wav file at exit")
+    ap.add_argument("--profile", action="store_true", help="print emulated PC every 2s")
     a = ap.parse_args()
     if a.headless:
         import os
