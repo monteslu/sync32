@@ -1,133 +1,162 @@
-[  3%] Built target libdvi_dvi_serialiser_pio_h
-[  3%] Built target no-OS-FatFS-SD-SDIO-SPI-RPi-Pico_rp2040_sdio_pio_h
-[  3%] Built target bs2_default
+PICO_SDK_PATH is /home/monteslu/code/pico/pico-sdk
+Target board (PICO_BOARD) is 'waveshare_rp2350_pizero'.
+Using board configuration from /home/monteslu/code/sync32/firmware/boards/waveshare_rp2350_pizero.h
+Pico Platform (PICO_PLATFORM) is 'rp2350-arm-s'.
+Build type is Release
+Using picotool from /home/monteslu/code/sync32/firmware/build/_deps/picotool/picotool
+TinyUSB available at /home/monteslu/code/pico/pico-sdk/lib/tinyusb/hw/bsp/rp2040; enabling build support for USB.
+cyw43-driver available at /home/monteslu/code/pico/pico-sdk/lib/cyw43-driver
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/monteslu/code/sync32/firmware/build
 [  3%] Built target libdvi_tmds_encode_1bpp_pio_h
+[  3%] Built target bs2_default
+[  3%] Built target no-OS-FatFS-SD-SDIO-SPI-RPi-Pico_rp2040_sdio_pio_h
+[  3%] Built target libdvi_dvi_serialiser_pio_h
 [  5%] Built target bs2_default_library
-[  6%] Building C object CMakeFiles/sync32.dir/src/font8.c.o
-[ 11%] Building C object CMakeFiles/sync32.dir/src/msc_disk.c.o
-[ 11%] Building C object CMakeFiles/sync32.dir/src/font16.c.o
-[ 11%] Building C object CMakeFiles/sync32.dir/src/font12.c.o
-[ 11%] Building C object CMakeFiles/sync32.dir/src/usb_input.c.o
-[ 11%] Building C object CMakeFiles/sync32.dir/tusb_xinput/xinput_host.c.o
-[ 11%] Building C object CMakeFiles/sync32.dir/src/usb_descriptors.c.o
-[ 11%] Building C object CMakeFiles/sync32.dir/src/api.c.o
-[ 12%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/host/hub.c.o
-[ 12%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/host/usbh.c.o
-[ 13%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/hid/hid_host.c.o
-[ 14%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/portable/raspberrypi/rp2040/hcd_rp2040.c.o
-[ 14%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_flash/flash.c.o
-[ 15%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2350/pico_platform/platform.c.o
-[ 16%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_platform_common/common.c.o
-[ 16%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_platform_panic/panic.c.o
-[ 17%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/hardware_claim/claim.c.o
-[ 18%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_sync/sync.c.o
-[ 19%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_sync_spin_lock/sync_spin_lock.c.o
-[ 19%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_bootrom/bootrom.c.o
-[ 20%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_bootrom/bootrom_lock.c.o
-[ 21%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_boot_lock/boot_lock.c.o
-[ 21%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_flash/flash.c.o
-[ 22%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_time/time.c.o
-[ 23%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_time/timeout_helper.c.o
-[ 23%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_timer/timer.c.o
-[ 24%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_irq/irq.c.o
-[ 25%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_irq/irq_handler_chain.S.o
-[ 25%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_sync/sem.c.o
+[  9%] Building C object CMakeFiles/sync32.dir/src/embedded_rom.c.o
+[  9%] Building C object CMakeFiles/sync32.dir/src/launcher.c.o
+[  9%] Building C object CMakeFiles/sync32.dir/src/sdcard.c.o
+[  9%] Building C object CMakeFiles/sync32.dir/src/video.c.o
+[  9%] Building C object CMakeFiles/sync32.dir/src/api.c.o
+[ 11%] Building C object CMakeFiles/sync32.dir/src/disk.c.o
+[ 11%] Building C object CMakeFiles/sync32.dir/src/xipboot.c.o
+[ 11%] Building C object CMakeFiles/sync32.dir/src/main.c.o
+[ 11%] Building C object CMakeFiles/sync32.dir/src/hw_config.c.o
+/home/monteslu/code/sync32/firmware/src/sdcard.c: In function 'sd_list_roms':
+/home/monteslu/code/sync32/firmware/src/sdcard.c:60:31: warning: 'strncpy' output may be truncated copying 16 bytes from a string of length 47 [-Wstringop-truncation]
+   60 |         if (!out[n].title[0]) strncpy(out[n].title, out[n].name, 16);
+      |                               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/monteslu/code/sync32/firmware/src/video.c:30:12: warning: 'clear_pending' defined but not used [-Wunused-variable]
+   30 | static int clear_pending;
+      |            ^~~~~~~~~~~~~
+/home/monteslu/code/sync32/firmware/src/video.c:29:17: warning: 'clear_color' defined but not used [-Wunused-variable]
+   29 | static uint16_t clear_color;
+      |                 ^~~~~~~~~~~
+[ 13%] Building C object CMakeFiles/sync32.dir/src/font8.c.o
+[ 13%] Building C object CMakeFiles/sync32.dir/src/font16.c.o
+[ 13%] Building C object CMakeFiles/sync32.dir/src/font12.c.o
+[ 15%] Building C object CMakeFiles/sync32.dir/src/msc_disk.c.o
+[ 15%] Building C object CMakeFiles/sync32.dir/src/usb_descriptors.c.o
+[ 15%] Building C object CMakeFiles/sync32.dir/src/usb_input.c.o
+[ 16%] Building C object CMakeFiles/sync32.dir/tusb_xinput/xinput_host.c.o
+[ 17%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/host/usbh.c.o
+[ 17%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/host/hub.c.o
+[ 18%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/hid/hid_host.c.o
+[ 19%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/portable/raspberrypi/rp2040/hcd_rp2040.c.o
+[ 19%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdlib/stdlib.c.o
+[ 20%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_gpio/gpio.c.o
+[ 21%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2350/pico_platform/platform.c.o
+[ 21%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_platform_common/common.c.o
+[ 22%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_platform_panic/panic.c.o
+[ 23%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/hardware_claim/claim.c.o
+[ 24%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_sync/sync.c.o
+[ 24%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_sync_spin_lock/sync_spin_lock.c.o
+[ 25%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_irq/irq.c.o
+[ 26%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_irq/irq_handler_chain.S.o
+[ 26%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_sync/sem.c.o
 [ 27%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_sync/lock_core.c.o
-[ 27%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_sync/critical_section.c.o
-[ 27%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_sync/mutex.c.o
-[ 28%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_util/datetime.c.o
-[ 29%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_util/pheap.c.o
-[ 29%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_util/queue.c.o
-[ 30%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_xip_cache/xip_cache.c.o
-[ 31%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdlib/stdlib.c.o
-[ 32%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_gpio/gpio.c.o
-[ 32%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_uart/uart.c.o
-[ 33%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_clocks/clocks.c.o
-[ 34%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_pll/pll.c.o
-[ 34%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_vreg/vreg.c.o
-[ 35%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_watchdog/watchdog.c.o
-[ 36%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_ticks/ticks.c.o
-[ 37%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_xosc/xosc.c.o
-[ 37%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_divider/divider.c.o
-[ 38%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_runtime/runtime.c.o
-[ 39%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_runtime_init/runtime_init.c.o
-[ 39%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_runtime_init/runtime_init_clocks.c.o
-[ 40%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_runtime_init/runtime_init_stack_guard.c.o
-[ 40%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_bit_ops/bit_ops_aeabi.S.o
-[ 41%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_divider/divider_compiler.c.o
-[ 42%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_math.c.o
-[ 44%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_aeabi_dcp.S.o
-[ 44%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_sci_m33.S.o
-[ 44%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_fma_dcp.S.o
-[ 45%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_conv_m33.S.o
-[ 47%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_float/float_math.c.o
-[ 47%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_float/float_conv32_vfp.S.o
-[ 47%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_float/float_common_m33.S.o
-[ 47%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_float/float_sci_m33_vfp.S.o
-[ 48%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_atomic/atomic.c.o
-[ 50%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_malloc/malloc.c.o
-[ 50%] Building CXX object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_cxx_options/new_delete.cpp.o
-[ 52%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_printf/printf.c.o
-[ 52%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_standard_binary_info/standard_binary_info.c.o
-[ 52%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_crt0/crt0.S.o
-[ 54%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_clib_interface/newlib_interface.c.o
-[ 54%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdio_usb/reset_interface.c.o
-[ 54%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdio/stdio.c.o
-[ 55%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdio_usb/stdio_usb.c.o
-[ 56%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdio_usb/stdio_usb_descriptors.c.o
-[ 57%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_unique_id/unique_id.c.o
-[ 57%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/portable/raspberrypi/rp2040/dcd_rp2040.c.o
-[ 59%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/portable/raspberrypi/rp2040/rp2040_usb.c.o
-[ 59%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/device/usbd.c.o
-[ 59%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/device/usbd_control.c.o
-[ 60%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/audio/audio_device.c.o
-[ 61%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/cdc/cdc_device.c.o
-[ 61%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/dfu/dfu_device.c.o
-[ 62%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/dfu/dfu_rt_device.c.o
-[ 63%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/hid/hid_device.c.o
-[ 63%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/midi/midi_device.c.o
-[ 64%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/msc/msc_device.c.o
-[ 66%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/net/ecm_rndis_device.c.o
-[ 66%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/net/ncm_device.c.o
-[ 66%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/usbtmc/usbtmc_device.c.o
-[ 67%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/vendor/vendor_device.c.o
-[ 68%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/tusb.c.o
-[ 69%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/video/video_device.c.o
-[ 69%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/common/tusb_fifo.c.o
-[ 70%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_fix/rp2040_usb_device_enumeration/rp2040_usb_device_enumeration.c.o
-[ 70%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_multicore/multicore.c.o
-[ 71%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_rand/rand.c.o
-[ 72%] Building C object CMakeFiles/sync32.dir/libdvi/dvi.c.o
-[ 72%] Building C object CMakeFiles/sync32.dir/libdvi/dvi_serialiser.c.o
-[ 73%] Building C object CMakeFiles/sync32.dir/libdvi/dvi_timing.c.o
-[ 74%] Building ASM object CMakeFiles/sync32.dir/libdvi/tmds_encode.S.o
-[ 74%] Building C object CMakeFiles/sync32.dir/libdvi/tmds_encode.c.o
-[ 75%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_dma/dma.c.o
-[ 76%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_interp/interp.c.o
-[ 76%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_pio/pio.c.o
-[ 77%] Building C object CMakeFiles/sync32.dir/fatfs/src/ff15/source/ff.c.o
-[ 78%] Building C object CMakeFiles/sync32.dir/fatfs/src/ff15/source/ffsystem.c.o
-[ 78%] Building C object CMakeFiles/sync32.dir/fatfs/src/ff15/source/ffunicode.c.o
-[ 79%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/dma_interrupts.c.o
-[ 80%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/sd_card.c.o
-[ 80%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/sd_timeouts.c.o
-[ 81%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SDIO/rp2040_sdio.c.o
-[ 82%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SDIO/sd_card_sdio.c.o
-[ 83%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SPI/my_spi.c.o
-[ 83%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SPI/sd_card_spi.c.o
-[ 84%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SPI/sd_spi.c.o
-[ 85%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/crash.c.o
-[ 85%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/crc.c.o
-[ 86%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/f_util.c.o
-[ 87%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/ff_stdio.c.o
-[ 87%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/file_stream.c.o
-[ 88%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/glue.c.o
-[ 89%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/my_debug.c.o
-[ 89%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/my_rtc.c.o
-[ 90%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/util.c.o
-[ 91%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_spi/spi.c.o
-[ 91%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_aon_timer/aon_timer.c.o
-[ 92%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_powman/powman.c.o
-[ 93%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/cmsis/stub/CMSIS/Device/RP2350/Source/system_RP2350.c.o
-[ 94%] Linking CXX executable sync32.elf
+[ 28%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_sync/mutex.c.o
+[ 28%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_sync/critical_section.c.o
+[ 29%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_time/time.c.o
+[ 30%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_time/timeout_helper.c.o
+[ 30%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_timer/timer.c.o
+[ 31%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_util/datetime.c.o
+[ 32%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_util/pheap.c.o
+[ 32%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/common/pico_util/queue.c.o
+[ 33%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_uart/uart.c.o
+[ 34%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_clocks/clocks.c.o
+[ 35%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_pll/pll.c.o
+[ 35%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_vreg/vreg.c.o
+[ 36%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_watchdog/watchdog.c.o
+[ 37%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_ticks/ticks.c.o
+[ 37%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_bootrom/bootrom.c.o
+[ 38%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_bootrom/bootrom_lock.c.o
+[ 39%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_boot_lock/boot_lock.c.o
+[ 39%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_flash/flash.c.o
+[ 40%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_xosc/xosc.c.o
+[ 41%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_divider/divider.c.o
+[ 41%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_runtime/runtime.c.o
+[ 42%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_runtime_init/runtime_init.c.o
+[ 43%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_runtime_init/runtime_init_clocks.c.o
+[ 43%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_runtime_init/runtime_init_stack_guard.c.o
+[ 44%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_bit_ops/bit_ops_aeabi.S.o
+[ 45%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_divider/divider_compiler.c.o
+[ 45%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_math.c.o
+[ 46%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_aeabi_dcp.S.o
+[ 47%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_fma_dcp.S.o
+[ 48%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_sci_m33.S.o
+[ 48%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_double/double_conv_m33.S.o
+[ 50%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_float/float_math.c.o
+[ 51%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_float/float_conv32_vfp.S.o
+[ 51%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_float/float_common_m33.S.o
+[ 52%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_float/float_sci_m33_vfp.S.o
+[ 53%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_malloc/malloc.c.o
+[ 54%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_atomic/atomic.c.o
+[ 54%] Building CXX object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_cxx_options/new_delete.cpp.o
+[ 55%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_standard_binary_info/standard_binary_info.c.o
+[ 55%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_printf/printf.c.o
+[ 56%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_clib_interface/newlib_interface.c.o
+[ 57%] Building ASM object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_crt0/crt0.S.o
+[ 57%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdio/stdio.c.o
+[ 58%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdio_usb/reset_interface.c.o
+[ 59%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdio_usb/stdio_usb.c.o
+[ 59%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_stdio_usb/stdio_usb_descriptors.c.o
+[ 60%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_unique_id/unique_id.c.o
+[ 62%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_xip_cache/xip_cache.c.o
+[ 62%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_flash/flash.c.o
+[ 62%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/portable/raspberrypi/rp2040/dcd_rp2040.c.o
+[ 64%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/portable/raspberrypi/rp2040/rp2040_usb.c.o
+[ 64%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/device/usbd.c.o
+[ 64%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/device/usbd_control.c.o
+[ 65%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/audio/audio_device.c.o
+[ 66%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/cdc/cdc_device.c.o
+[ 66%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/dfu/dfu_device.c.o
+[ 67%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/dfu/dfu_rt_device.c.o
+[ 68%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/hid/hid_device.c.o
+[ 68%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/midi/midi_device.c.o
+[ 70%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/net/ecm_rndis_device.c.o
+[ 70%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/msc/msc_device.c.o
+[ 70%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/net/ncm_device.c.o
+[ 71%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/usbtmc/usbtmc_device.c.o
+[ 72%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/vendor/vendor_device.c.o
+[ 72%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/class/video/video_device.c.o
+[ 73%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/tusb.c.o
+[ 74%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/lib/tinyusb/src/common/tusb_fifo.c.o
+[ 75%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_fix/rp2040_usb_device_enumeration/rp2040_usb_device_enumeration.c.o
+[ 75%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_multicore/multicore.c.o
+[ 76%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_rand/rand.c.o
+[ 77%] Building C object CMakeFiles/sync32.dir/libdvi/dvi.c.o
+[ 77%] Building C object CMakeFiles/sync32.dir/libdvi/dvi_serialiser.c.o
+[ 78%] Building C object CMakeFiles/sync32.dir/libdvi/dvi_timing.c.o
+[ 79%] Building ASM object CMakeFiles/sync32.dir/libdvi/tmds_encode.S.o
+[ 79%] Building C object CMakeFiles/sync32.dir/libdvi/tmds_encode.c.o
+[ 80%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_dma/dma.c.o
+[ 81%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_interp/interp.c.o
+[ 81%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_pio/pio.c.o
+[ 82%] Building C object CMakeFiles/sync32.dir/fatfs/src/ff15/source/ff.c.o
+[ 83%] Building C object CMakeFiles/sync32.dir/fatfs/src/ff15/source/ffsystem.c.o
+[ 83%] Building C object CMakeFiles/sync32.dir/fatfs/src/ff15/source/ffunicode.c.o
+[ 84%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/dma_interrupts.c.o
+[ 85%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/sd_card.c.o
+[ 85%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/sd_timeouts.c.o
+[ 86%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SDIO/rp2040_sdio.c.o
+[ 88%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SDIO/sd_card_sdio.c.o
+[ 88%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SPI/my_spi.c.o
+[ 88%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SPI/sd_card_spi.c.o
+[ 89%] Building C object CMakeFiles/sync32.dir/fatfs/src/sd_driver/SPI/sd_spi.c.o
+[ 90%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/crash.c.o
+[ 90%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/crc.c.o
+[ 91%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/f_util.c.o
+[ 92%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/ff_stdio.c.o
+[ 92%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/file_stream.c.o
+[ 93%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/glue.c.o
+[ 94%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/my_debug.c.o
+[ 94%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/my_rtc.c.o
+[ 95%] Building C object CMakeFiles/sync32.dir/fatfs/src/src/util.c.o
+[ 96%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_spi/spi.c.o
+[ 96%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/pico_aon_timer/aon_timer.c.o
+[ 97%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/hardware_powman/powman.c.o
+[ 98%] Building C object CMakeFiles/sync32.dir/home/monteslu/code/pico/pico-sdk/src/rp2_common/cmsis/stub/CMSIS/Device/RP2350/Source/system_RP2350.c.o
+[100%] Linking CXX executable sync32.elf
 [100%] Built target sync32
