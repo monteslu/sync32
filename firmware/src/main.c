@@ -6,6 +6,13 @@
 #include "sync32.h"
 #include "video.h"
 #include "crash.h"
+#include "log.h"
+
+// USB quarantine: scratch[4] carries a rapid-death counter across warm
+// reboots (tag 0x5B007A00 | n). If several boots in a row die young, the
+// next boot runs with the USB host stack DISABLED so a hostile/broken
+// device can never reboot-loop the console. Power-cycling clears it.
+bool s32_usb_quarantined;
 
 extern int s32_launch(const uint8_t *rom, uint32_t size);
 extern const uint8_t embedded_rom[];
@@ -14,6 +21,8 @@ extern const unsigned embedded_rom_len;
 // panic interceptor: record why + who across the reboot (scratch 5/6),
 // plus a flash-range stack scan for a poor-man's backtrace (scratch 7)
 void __attribute__((noreturn)) sync32_panic(const char *fmt, ...) {
+    // into the persistent ring FIRST: this line survives the reboot
+    s32_log("PANIC \"%s\" from %p", fmt ? fmt : "?", __builtin_return_address(0));
     watchdog_hw->scratch[5] = (uint32_t)fmt;
     watchdog_hw->scratch[6] = (uint32_t)__builtin_return_address(0);
     uint32_t *sp = (uint32_t *)__builtin_frame_address(0);
@@ -63,8 +72,13 @@ int main(void) {
         }
         // scrub scratch [2..7]: picotool reboots write through scratch[2]/[3]
         // and stale boot-vector magic in [4..7] diverts the bootrom.
-        // [0] = canary, [1] = xip flag: preserved.
+        // [0] = canary, [1] = xip flag: preserved. [3] survives ONLY with the
+        // exact usb-host-mode magic (launcher/api_exit set it before their
+        // watchdog_reboot; scrubbing it made pad mode unreachable: the 2.5s
+        // device-probe reboot looped forever whenever no PC was attached)
+        uint32_t usb_flag = watchdog_hw->scratch[3];
         for (int i = 2; i <= 7; i++) watchdog_hw->scratch[i] = 0;
+        if (usb_flag == 0x505AD000u) watchdog_hw->scratch[3] = usb_flag;
         if (watchdog_hw->scratch[0] == 0xDEADB007u) {   // last boot died pre-alive
             watchdog_hw->scratch[0] = 0;
             reset_usb_boot(0, 0);
@@ -73,45 +87,43 @@ int main(void) {
     }
     #define STAGE(n) (watchdog_hw->scratch[2] = 0x57B0E000u | (n))
     STAGE(1);
-    // BOOTBUG stage harness: previous boot's last stage -> flash sentinel,
-    // auto-BOOTSEL when the previous boot died before going alive
-    {
-        extern void flash_range_erase(uint32_t, unsigned int);
-        extern void flash_range_program(uint32_t, const uint8_t *, unsigned int);
-        uint32_t page[64];
-        for (int i = 0; i < 64; i++) page[i] = 0xFFFFFFFFu;
-        page[0] = watchdog_hw->scratch[2];
-        flash_range_erase(0xFE000, 4096);
-        flash_range_program(0xFE000, (const uint8_t *)page, 256);
-        if (watchdog_hw->scratch[0] == 0xDEADB007u) {
-            watchdog_hw->scratch[0] = 0;
-            reset_usb_boot(0, 0);
-        }
-        watchdog_hw->scratch[0] = 0xDEADB007u;
-    }
-    #define STAGE(n) (watchdog_hw->scratch[2] = 0x57A6E000u | (n))
-    STAGE(1);
-    // watchdog: reboot-to-launcher on hang (no BOOTSEL redirect in dev)
-    // watchdog_enable(5000, true);   // KILLER-B TEST: disabled
+    s32_log_init();
+    // quarantine decision from reset-surviving RAM: probe hops count as
+    // deaths too (they never mark alive), so require a few extra
+    s32_usb_quarantined = s32_log_rapid_deaths() >= 6;
+    if (s32_usb_quarantined) s32_log("QUARANTINE: usb host disabled (rapid deaths)");
+    // watchdog: reboot-to-launcher on hang. (Was disabled hunting "Killer
+    // B", which turned out to be the dvi_init heap panic — safe again.)
+    watchdog_enable(5000, true);
     STAGE(2);
 
     video_init();
     STAGE(3);
-    STAGE(3);
+    s32_log("video up");
     // dual-role USB: scratch[3] flag = boot straight into pad (host) mode;
     // otherwise device-probe mode (PC serial/MSC), launcher flips if no PC.
     void s32_usb_host_start(void);
     bool host_boot = watchdog_hw->scratch[3] == 0x505AD000u;
     watchdog_hw->scratch[3] = 0;
     STAGE(4);
-    STAGE(4);
-    if (host_boot) { STAGE(0x41); s32_usb_host_start(); STAGE(0x43); }
-    else { STAGE(0x42); stdio_init_all(); STAGE(0x44); }
-    STAGE(5);
+    if (s32_usb_quarantined) {
+        // host stack off; run as a normal usb DEVICE (serial still works,
+        // and the launcher must treat this as pc-mode: no probe-hop reboot)
+        s32_log("usb: host OFF (quarantined), device mode");
+        stdio_init_all();
+    } else if (host_boot) {
+        STAGE(0x41); s32_log("usb: host mode"); s32_usb_host_start(); STAGE(0x43);
+    } else {
+        STAGE(0x42); s32_log("usb: device probe"); stdio_init_all(); STAGE(0x44);
+    }
     STAGE(5);
     watchdog_hw->scratch[2]++;               // boot counter (survives reboots)
     crash_handler_init();
     const crash_info_t *ci = crash_handler_get_info();
+    if (ci && ci->magic == crash_magic_hard_fault)
+        s32_log("CRASH prev boot: pc=%08lx lr=%08lx",
+                (unsigned long)ci->cy_faultFrame.pc,
+                (unsigned long)ci->cy_faultFrame.lr);
     if (ci && ci->magic == crash_magic_hard_fault) {
         watchdog_hw->scratch[6] = ci->magic;  // breadcrumb for the on-screen diag
         watchdog_hw->scratch[7] = ci->cy_faultFrame.pc;
@@ -139,19 +151,33 @@ int main(void) {
 #include "pico/time.h"
 static volatile uint32_t last_present_frame;
 volatile bool s32_long_op = false;      // set around mkfs/flash-writes etc
-void s32_note_present(void) { last_present_frame = video_frame_count(); }
+void s32_note_present(void) {
+    last_present_frame = video_frame_count();
+    // any presented frame proves this boot alive: GAMES present too, and the
+    // marker being launcher-only meant every exit/reset from a game looked
+    // like a dead boot and false-ejected the console to BOOTSEL (black TV)
+    watchdog_hw->scratch[0] = 0;
+}
 static bool dog_cb(struct repeating_timer *t) {
     (void)t;
     // feed only while ALIVE: long op in progress, early boot grace, or
     // scanout advancing with a recent present. A frozen vframe used to
     // satisfy the old check forever (0 - 0 < 150): hangs lived for good.
     static uint32_t last_seen_vframe;
+    static bool starve_logged;
     uint32_t vf = video_frame_count();
     bool scanning = vf != last_seen_vframe;
     last_seen_vframe = vf;
     if (s32_long_op || to_ms_since_boot(get_absolute_time()) < 8000 ||
-        (scanning && vf - last_present_frame < 150))
+        (scanning && vf - last_present_frame < 150)) {
         watchdog_update();
+        starve_logged = false;
+    } else if (!starve_logged) {
+        // last words before the watchdog fires: WHY feeding stopped
+        s32_log("WATCHDOG STARVING scan=%d vf=%lu last_present=%lu",
+                scanning, (unsigned long)vf, (unsigned long)last_present_frame);
+        starve_logged = true;
+    }
     return true;
 }
 static struct repeating_timer dog_timer;

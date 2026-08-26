@@ -92,7 +92,9 @@ int s32_xip_stage_and_launch(const char *filename) {
     s32_long_op = true;
     multicore_reset_core1();
 
-    static uint8_t chunk[4096];
+    // stage through game RAM: no game is loaded and core1 is about to die,
+    // so the region is free; keeps 4KB out of firmware bss (heap pressure)
+    uint8_t *chunk = (uint8_t *)0x20060000;
     uint32_t done = 0;
     int rc = 0;
     while (done < code_size) {

@@ -1,7 +1,8 @@
 build/
-*.elf
+build-mac/
 __pycache__/
-saves/
+*.elf
 sdk/nes/nes/
 sdk/nesf/nesf/
 sdk/nesf/fceumm/
+saves/

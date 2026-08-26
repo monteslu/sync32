@@ -33,6 +33,15 @@ static int clear_pending;
 static struct dvi_inst dvi0;
 static volatile uint32_t vframe;
 
+// TMDS scanline buffers, static (DVI_N_TMDS_BUFFERS=0): the 9KB heap must
+// stay free for FatFs/exFAT. 3 * 640/DVI_SYMBOLS_PER_WORD words each; two
+// live in the otherwise-idle 4KB scratch banks (own arbiters: scanout DMA
+// never contends with framebuffer traffic), the third in main RAM.
+#define TMDS_WORDS (3 * 640 / 2)
+static uint32_t tmds_buf_a[TMDS_WORDS] __attribute__((section(".scratch_y.tmdsbuf")));
+static uint32_t tmds_buf_b[TMDS_WORDS] __attribute__((section(".scratch_x.tmdsbuf")));
+static uint32_t tmds_buf_c[TMDS_WORDS];
+
 // proven path: palette-LUT each 8bpp row to RGB565, then the same 16bpp
 // TMDS encode that ran for hours on this board in the lab demos.
 static uint16_t line16[320];
@@ -81,6 +90,10 @@ void video_init(void) {
     dvi0.ser_cfg = DVI_DEFAULT_SERIAL_CONFIG;
     VSTAGE(4);
     dvi_init(&dvi0, next_striped_spin_lock_num(), next_striped_spin_lock_num());
+    void *tb;
+    tb = tmds_buf_a; queue_add_blocking_u32(&dvi0.q_tmds_free, (uint32_t *)&tb);
+    tb = tmds_buf_b; queue_add_blocking_u32(&dvi0.q_tmds_free, (uint32_t *)&tb);
+    tb = tmds_buf_c; queue_add_blocking_u32(&dvi0.q_tmds_free, (uint32_t *)&tb);
     VSTAGE(5);
     VSTAGE(6);
     multicore_launch_core1(core1_scanout);

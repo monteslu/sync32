@@ -7,6 +7,7 @@
 #include "sync32.h"
 #include "video.h"
 #include "sdcard.h"
+#include "log.h"
 
 extern const uint8_t Font8_Table[];   // 5x8 small font
 extern const uint8_t Font16_Table[];  // 11x16 brand font
@@ -21,7 +22,7 @@ extern const unsigned embedded_rom_len;
 
 // UI palette indexes (set once in launcher_run)
 enum { C_BG = 0, C_TEXT = 1, C_TITLE = 2, C_WARN = 3, C_DIM = 4,
-       C_BAR = 5, C_SEL = 6, C_SELTEXT = 7, C_OK = 8 };
+       C_BAR = 5, C_SEL = 6, C_SELTEXT = 7, C_OK = 8, C_BRAND = 9 };
 
 static void px_rect(int x, int y, int w, int h, uint8_t ci) {
     uint8_t *fb = video_canvas();
@@ -59,6 +60,10 @@ static void draw_char16(int x, int y, char c, uint8_t ci) {
 }
 static void draw_text16(int x, int y, const char *s, uint8_t ci) {
     for (; *s; s++, x += 11) draw_char16(x, y, *s, ci);
+}
+static void draw_brand(int x, int y) {          // "Sync" orange + "32" white
+    draw_text16(x, y, "Sync", C_BRAND);
+    draw_text16(x + 4 * 11, y, "32", C_TEXT);
 }
 static void draw_char12(int x, int y, char c, uint8_t ci) {
     if (c < 32 || c > 126) c = '?';
@@ -99,6 +104,7 @@ void launcher_run(void) {
     pal[C_SEL] = 0x2965;     // selection bar
     pal[C_SELTEXT] = 0xFFE0; // yellow
     pal[C_OK] = 0x07E0;      // green
+    pal[C_BRAND] = 0xFC60;   // brand orange
     video_palette(pal);
     static rom_entry_t roms[32];   // 2.2KB: off the stack
     int n = -1, sel = 0, scroll = 0;
@@ -109,23 +115,32 @@ void launcher_run(void) {
     // dual-role usb plumbing (usb_input.c / tinyusb)
     bool s32_usb_host_active(void);
     int s32_usb_pads_mounted(void);
+    int s32_usb_hids_mounted(void);
+    int s32_usb_devs_mounted(void);
+    bool s32_usb_device_attached(void);
     uint32_t s32_usb_last_mount_ms(void);
     bool tud_connected(void);
     while (1) {
         uint32_t now_ms = to_ms_since_boot(get_absolute_time());
-        if (!s32_usb_host_active()) {
-            // device probe: no PC on the USB port after 2.5s -> pad mode
+        // rapid-death quarantine: this boot proved healthy, mark it
+        extern bool s32_usb_quarantined;
+        static bool marked_alive;
+        if (!marked_alive &&
+            (now_ms > 30000 || s32_usb_devs_mounted() > 0 || tud_connected())) {
+            s32_log_mark_alive();
+            marked_alive = true;
+        }
+        if (!s32_usb_host_active() && !s32_usb_quarantined) {
+            // ONE device probe, at power-on only: no PC on the USB port
+            // after 2.5s -> pad mode, and we COMMIT. No periodic re-probe:
+            // the old 15s host<->probe "self-heal" ping-pong reboot-looped
+            // any console with an empty (or unenumerable) port forever.
+            // Changing what's plugged in = power-cycle, like every console.
             if (now_ms > 2500 && !tud_connected()) {
                 watchdog_hw->scratch[3] = 0x505AD000u;
                 watchdog_reboot(0, 0, 200);
                 while (1) tight_loop_contents();
             }
-        } else if (s32_usb_pads_mounted() == 0 &&
-                   now_ms - s32_usb_last_mount_ms() > 15000) {
-            // host mode but nothing attached for a while: the cable may now
-            // be a PC again; bounce through the device probe to find out
-            watchdog_reboot(0, 0, 200);
-            while (1) tight_loop_contents();
         }
         if (video_frame_count() >= rescan_at) {
             rescan_at = video_frame_count() + 120;  // rescan every 2s
@@ -133,8 +148,18 @@ void launcher_run(void) {
             if (r != sd_state) { sd_state = r; sel = 0; scroll = 0; }
             n = r;
         }
+        int s32_xfer_poll(void);
+        int s32_ymodem_rx(void);
+        if (s32_xfer_poll()) { sd_state = -99; rescan_at = 0; }  // SWD file drop
         uint16_t e = pad_edge();
         int cc = getchar_timeout_us(0);            // serial drive for the lab
+        if (cc == 'r') {                           // YMODEM receive (sz from a terminal)
+            int nf = s32_ymodem_rx();
+            printf("ymodem: %d file(s)\n", nf);
+            sd_state = -99; rescan_at = 0;
+            pad_edge();
+            continue;
+        }
         if (cc == 'h') {                       // diag: force host mode now
             watchdog_hw->scratch[3] = 0x505AD000u;
             watchdog_reboot(0, 0, 200);
@@ -148,9 +173,15 @@ void launcher_run(void) {
 
         px_rect(0, 0, 320, 240, C_BG);
         px_rect(0, 0, 320, 22, C_BAR);
-        draw_text16(6, 4, "sync32", C_TITLE);
+        draw_brand(6, 4);
         draw_text12(96, 6, "select a game", C_TEXT);
-        if (s32_usb_pads_mounted() > 0) draw_text12(292, 6, "PAD", C_OK);
+        if (s32_usb_quarantined) draw_text12(264, 6, "USB OFF", C_WARN);
+        else if (s32_usb_pads_mounted() > 0) draw_text12(292, 6, "PAD", C_OK);
+        else if (s32_usb_hids_mounted() > 0) draw_text12(285, 6, "PAD?", C_WARN);  // detected, not yet supported
+        else if (s32_usb_host_active() && s32_usb_device_attached())
+            draw_text12(285, 6, "USB?", C_WARN);   // attached, failed to enumerate
+        if (s32_usb_quarantined)
+            draw_text12(6, 200, "usb disabled after repeated resets - power-cycle to retry", C_WARN);
         else if (!s32_usb_host_active() && tud_connected()) draw_text12(299, 6, "PC", C_DIM);
         char buf[64];
         snprintf(buf, sizeof buf, "boot %lu %s crash %08lx",
@@ -173,12 +204,13 @@ void launcher_run(void) {
                 draw_text12(276, y, buf, i == sel ? C_SELTEXT : C_DIM);
             }
         }
-        draw_text12(6, 224, "A: play   X: demo   Y: usb drive", C_DIM);
+        draw_text12(6, 224, "A: play  X: demo  Y: usb drive  r: recv", C_DIM);
         video_present();
-        if ((video_frame_count() % 120) == 0)
+        if ((video_frame_count() % 120) == 0) {
             watchdog_hw->scratch[0] = 0;   // forensics: alive
             printf("HEARTBEAT vframe=%lu roms=%d\n",
                    (unsigned long)video_frame_count(), n);
+        }
 
         if ((e & S32_PAD_X) || cc == 'd') {        // built-in demo
             s32_launch(embedded_rom, embedded_rom_len);
@@ -198,7 +230,7 @@ void launcher_run(void) {
                 int c2 = getchar_timeout_us(0);
                 px_rect(0, 0, 320, 240, C_BG);
                 px_rect(0, 0, 320, 22, C_BAR);
-                draw_text16(6, 4, "sync32", C_TITLE);
+                draw_brand(6, 4);
                 draw_text12(96, 6, "USB drive mode", C_SELTEXT);
                 draw_text12(48, 88, "this console is now a thumb drive", C_TEXT);
                 draw_text12(48, 104, "copy .s32 games onto it from a PC", C_TEXT);
