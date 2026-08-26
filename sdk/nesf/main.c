@@ -29,7 +29,17 @@ static uint16_t pal565[256];
 static int pal_dirty;
 
 void FCEUD_SetPalette(uint16_t index, uint8_t r, uint8_t g, uint8_t b) {
-    pal565[index] = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+    // fceumm sets 512 entries (emphasis variants); our canvas is 8bpp so
+    // only 0..255 exist. Writing past that corrupted the globals next
+    // door (dendy et al) and made frame 1 run forever. Ask me how I know.
+    if (index > 255) return;
+    uint16_t v = (uint16_t)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+    pal565[index] = v;
+    if (index < 64) {                   // XBuf carries flag bits 6/7: mirror
+        pal565[index | 0x40] = v;       // the base colors across all banks
+        pal565[index | 0x80] = v;       // (deemphasis accuracy traded away,
+        pal565[index | 0xC0] = v;       //  tracked in DEBTS)
+    }
     pal_dirty = 1;
 }
 void FCEUD_GetPalette(uint8_t index, uint8_t *r, uint8_t *g, uint8_t *b) {
@@ -116,9 +126,8 @@ static void run_game(int idx) {
         int r = ab->disk_read(fd, rombuf + got, 16384);
         if (r <= 0) break;
         got += r;
-        ab->rect(60, 116, 200, 8, 0x8410);
-        ab->rect(60, 116, (int)(200 * got / size), 8, 0xFFE0);
-        ab->present();
+        // NO drawing while the file occupies the canvas: the progress bar
+        // used to stamp itself into the ROM's CHR data (SMB's font tiles)
     }
     ab->disk_close(fd);
     if (got != size) return;
@@ -132,6 +141,9 @@ static void run_game(int idx) {
         }
         return;
     }
+    FCEUI_SetVidSystem(0);   // NTSC: sets scanlines_per_frame: WITHOUT
+                              // this the PPU loop underflows and frame 1
+                              // never ends (2-hour lesson)
     js = 0;
     FCEUI_SetInput(0, SI_GAMEPAD, &js, 0);
     FCEUI_PowerNES();
@@ -185,6 +197,13 @@ void game_main(const sync32_api_t *api) {
     if (!FCEUI_Initialize()) {
         for (;;) { ab->clear(0xF800); ab->present(); }
     }
+    // volumes BEFORE FCEUI_Sound: the amp tables bake these in
+    FCEUI_SetSoundVolume(150);
+    FSettings.TriangleVolume = 256;
+    FSettings.SquareVolume[0] = 256;
+    FSettings.SquareVolume[1] = 256;
+    FSettings.NoiseVolume = 256;
+    FSettings.PCMVolume = 256;
     FCEUI_Sound(48000);                 // ABI rate; rate 0 wedges sound-table init
 
     int n = scan_roms();
