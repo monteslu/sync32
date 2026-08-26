@@ -1,0 +1,11 @@
+PICO_SDK_PATH is /home/monteslu/code/pico/pico-sdk
+Target board (PICO_BOARD) is 'waveshare_rp2350_pizero'.
+Using board configuration from /home/monteslu/code/sync32/firmware/boards/waveshare_rp2350_pizero.h
+Pico Platform (PICO_PLATFORM) is 'rp2350-arm-s'.
+Build type is Release
+Using picotool from /home/monteslu/code/sync32/firmware/build/_deps/picotool/picotool
+TinyUSB available at /home/monteslu/code/pico/pico-sdk/lib/tinyusb/hw/bsp/rp2040; enabling build support for USB.
+cyw43-driver available at /home/monteslu/code/pico/pico-sdk/lib/cyw43-driver
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/monteslu/code/sync32/firmware/build

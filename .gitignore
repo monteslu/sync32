@@ -1,0 +1,4 @@
+build/
+*.elf
+__pycache__/
+saves/
