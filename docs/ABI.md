@@ -68,10 +68,24 @@ Little-endian throughout. File = 64-byte header + payload.
 | 0x1F | 1 | reserved0 | 0 |
 | 0x20 | 16 | title | UTF-8, NUL-padded, shown by launcher |
 | 0x30 | 8 | game_id | unique id (publisher-chosen); keys save files |
-| 0x38 | 8 | reserved1 | 0 |
+| 0x38 | 4 | icon_offset | file offset of the launcher icon, 0 = none |
+| 0x3C | 4 | reserved1 | 0 |
 
 Payload: the flat binary image (code + rodata + data-init template),
 produced by the SDK linker script. Assets ship inside the image as rodata.
+
+### 3.1 Launcher icon (optional)
+
+`icon_offset`, when nonzero, points at 512 bytes appended after the code
+image (inside the CRC, outside `code_size`, so the loader never maps it):
+a 16x16 RGB565 image, row-major, little-endian. The value `0xF81F`
+(pure magenta) is reserved as the transparency colorkey; encoders must
+nudge a genuinely magenta pixel to `0xF83F`. The launcher shows the icon
+at 16x16 (or pixel-doubled to 32x32 for the selected entry) to the left
+of the title text; a ROM without an icon gets a default glyph. Existing
+ROMs carry zeros here, so the field is optional by construction.
+`mks32.py --icon icon.png` embeds one (alpha below 50% becomes the
+colorkey).
 
 ## 4. Loading model
 
