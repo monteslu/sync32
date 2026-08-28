@@ -1,3 +1,0 @@
-[submodule "sdk"]
-	path = sdk
-	url = git@github.com:monteslu/sync32-sdk.git

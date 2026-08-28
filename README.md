@@ -12,12 +12,22 @@ and in the emulator.
   (libretro-fceumm, XIP mode) — NES emulators running as sync32 games.
 - `roms/` — prebuilt `.s32` games.
 - `docs/ABI.md` — the ROM format and syscall contract.
-- `sdk/` — submodule: [sync32-sdk](https://github.com/monteslu/sync32-sdk),
-  the "copy this repo and make a game" starter.
+- `sdk/` — a symlink to a [sync32-sdk](https://github.com/monteslu/sync32-sdk)
+  checkout beside this one: the "copy this repo and make a game" starter.
 
-Related repos:
+Related repos, all expected to be cloned into the SAME parent directory
+(the carts and tooling find each other by relative path):
 [sync32-sdk](https://github.com/monteslu/sync32-sdk) ·
+[sync32-gl](https://github.com/monteslu/sync32-gl) ·
 [sync32-emulator](https://github.com/monteslu/sync32-emulator)
+
+```
+somewhere/
+  sync32/           # this repo: firmware, launcher, docs, carts
+  sync32-sdk/       # cart headers, crt0, linker scripts, mks32.py
+  sync32-gl/        # 3D renderer for carts
+  sync32-emulator/  # the C emulator: s32run, s32play, libretro, wasm
+```
 
 ## Building the firmware
 
@@ -25,7 +35,8 @@ Requires the [pico-sdk](https://github.com/raspberrypi/pico-sdk) 2.2.0
 (with the tinyusb submodule) and `arm-none-eabi-gcc`:
 
 ```
-git clone --recursive https://github.com/monteslu/sync32
+git clone https://github.com/monteslu/sync32
+git clone https://github.com/monteslu/sync32-sdk   # sdk/ symlinks to this
 cd sync32/firmware
 cmake -B build -DPICO_SDK_PATH=/path/to/pico-sdk
 cmake --build build -j8
