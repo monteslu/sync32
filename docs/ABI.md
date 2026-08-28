@@ -90,6 +90,10 @@ takes precedence and needs no build step at all: see 3.3.
 
 ### 3.2 Game forms: folder and archive
 
+> STATUS: specified 2026-08-28, not yet implemented. The firmware currently
+> lists bare `.s32` files only and resolves streamed data through a sidecar
+> `<romname>/` folder. Sections 3.2 to 3.4 are what it is being changed to.
+
 A game reaches the console in one of two forms, and **a game cannot tell
 which one it is running from**. Both give it the same two things: an
 executable, and a private namespace of named resources it reads through the

@@ -55,8 +55,38 @@ file), with `picotool load -x`, or over SWD with a debugprobe.
   power-cycle, like any console.
 - A UART serial adapter on GP0/GP1 (115200) gives the serial console and
   YMODEM even while a gamepad owns the USB port.
-- Games that use data streaming read from a `<romname>/` folder next to
-  their `.s32` on the card.
+## What goes on the SD card
+
+> **Specified, not yet built.** The firmware today lists bare `.s32` files
+> and reads streamed data from a `<romname>/` folder beside them. The folder
+> and tar forms below are settled in `docs/ABI.md` 3.2 and are what the
+> loader is being changed to.
+
+A game is a **folder containing `main.s32e`**, or that same folder tarred up
+as a single `NAME.s32`. Both run identically; a game cannot tell which it
+came from. Mix them freely at the top level:
+
+```
+/
+  chromium.s32          a game, one file
+  nes/                  a game, as a folder
+    main.s32e             its executable
+    info.txt              title = NES
+    icon.bmp              16x16
+    smb.nes               drop your own files in
+```
+
+The folder form is the one to use while making a game, and for anything the
+player adds files to: an emulator ships as a folder precisely so ROMs can be
+dragged in beside it. To hand someone a finished game as one file:
+
+```
+tar cf mygame.s32 -C mygame .
+```
+
+No tool of ours is needed to pack or inspect one. `info.txt` (a line of
+`title = ...`) and `icon.bmp` are both optional; without them a game shows
+its folder name and a default icon. See `docs/ABI.md` 3.2 for the details.
 
 ## License
 
