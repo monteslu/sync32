@@ -366,9 +366,9 @@ Semantics notes:
   in the tar. A game never learns which.
   Names may contain `/`, so a game can organise its own resources
   (`roms/smb.nes`), but never `..`, a leading `/`, a drive letter or a
-  backslash: the namespace is a sandbox with no route out of it. `main.s32e`
-  and `.s32id` are the console's own files and are invisible to both
-  `disk_open` and `disk_list`.
+  backslash: the namespace is a sandbox with no route out of it. `main.s32e`,
+  `info.txt`, `icon.bmp` and `.s32id` are the console's own files (3.3) and
+  are invisible to both `disk_open` and `disk_list`, in every form.
   For a folder-form game the namespace is that folder. A bare `.s32` may
   also carry a sidecar `<romname>/` beside it, and that directory can be
   bound by `game_id` instead of by name so renaming the ROM does not orphan
