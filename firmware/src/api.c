@@ -85,7 +85,7 @@ static void api_exit(void) {
 // the size is a power of two so the wrap is a mask rather than a division
 // (a 32-bit divide in the DVI IRQ is far too slow), and each side publishes
 // its pointer only AFTER the data it refers to is in memory.
-#define AUD_RING 512                       // stereo frames, power of two
+#define AUD_RING 1024                       // stereo frames, power of two
 #define AUD_MASK (AUD_RING - 1)
 static int16_t aud_ring[AUD_RING * 2];
 static volatile uint32_t aud_w, aud_r;

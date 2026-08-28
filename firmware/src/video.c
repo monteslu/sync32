@@ -25,8 +25,12 @@ static uint16_t cur_palette[256];
 // every cart shipped so far fit well under this, and the 4KB reclaimed
 // pays for the HDMI data-island DMA blocklists. Revisit if a cart ever
 // needs the full 64KB (sheet_load reports -2 and the cart can subdivide).
-static uint8_t sheet_arena[60 * 1024];   /* ABI says 64KB; 4KB of that
-                                          * pays for HDMI audio islands */
+static uint8_t sheet_arena[58 * 1024];   /* ABI says 64KB; 6KB of that pays
+                                          * for HDMI audio -- the island DMA
+                                          * blocklists and the 1024-frame
+                                          * sample ring that full-rate 48kHz
+                                          * needs. sheet_load returns -2 past
+                                          * this and a cart can subdivide. */
 static struct { int off, w, h; } sheets[8];
 static int sheet_count;
 static int arena_used;
