@@ -14,6 +14,10 @@
 // device can never reboot-loop the console. Power-cycling clears it.
 bool s32_usb_quarantined;
 
+// sticky pad-mode marker: survives every warm reset (including debugger
+// resets), cleared only by a real power cycle. See the host_boot decision.
+uint32_t s32_pad_mode_sticky __attribute__((section(".uninitialized_data.s32pad")));
+
 extern int s32_launch(const uint8_t *rom, uint32_t size);
 extern const uint8_t embedded_rom[];
 extern const unsigned embedded_rom_len;
@@ -103,7 +107,15 @@ int main(void) {
     // dual-role USB: scratch[3] flag = boot straight into pad (host) mode;
     // otherwise device-probe mode (PC serial/MSC), launcher flips if no PC.
     void s32_usb_host_start(void);
-    bool host_boot = watchdog_hw->scratch[3] == 0x505AD000u;
+    // Pad mode is STICKY: once the console has entered host mode it stays
+    // there across resets, kept in a RAM word that survives reset but not
+    // power-off. Without this, any reset that does not go through the
+    // launcher (a debugger reset, a watchdog reboot mid-game) landed in
+    // device-probe mode and the attached gamepad went dark until someone
+    // set the flag by hand.
+    extern uint32_t s32_pad_mode_sticky;   // .uninitialized_data, see below
+    bool host_boot = watchdog_hw->scratch[3] == 0x505AD000u ||
+                     s32_pad_mode_sticky == 0x50414421u;   // "PAD!"
     watchdog_hw->scratch[3] = 0;
     STAGE(4);
     if (s32_usb_quarantined) {
@@ -112,6 +124,7 @@ int main(void) {
         s32_log("usb: host OFF (quarantined), device mode");
         stdio_init_all();
     } else if (host_boot) {
+        s32_pad_mode_sticky = 0x50414421u;   // remember across resets
         STAGE(0x41); s32_log("usb: host mode"); s32_usb_host_start(); STAGE(0x43);
     } else {
         STAGE(0x42); s32_log("usb: device probe"); stdio_init_all(); STAGE(0x44);
@@ -177,6 +190,13 @@ static bool dog_cb(struct repeating_timer *t) {
         s32_log("WATCHDOG STARVING scan=%d vf=%lu last_present=%lu",
                 scanning, (unsigned long)vf, (unsigned long)last_present_frame);
         starve_logged = true;
+
+#ifdef S32_FREEZE_HOLD
+        // DIAGNOSTIC BUILD ONLY: hold the frozen state alive so the SWD
+        // probe can autopsy core1 instead of the watchdog destroying it
+        s32_log("FREEZE HOLD: waiting for debugger");
+        for (;;) watchdog_update();
+#endif
     }
     return true;
 }
