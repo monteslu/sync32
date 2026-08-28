@@ -40,7 +40,7 @@ console.
 | Sprites | display-list compositing, up to 128 sprite ops per frame, arbitrary WxH source rects, color-key index 0 |
 | Sheets | up to 64 KB of uploaded sprite sheet(s) resident |
 | Canvas | optional framebuffer surface at the active resolution, 8bpp indexed |
-| Audio | 48 kHz signed 16-bit stereo ring buffer (see 6.4) |
+| Audio | 48 kHz signed 16-bit stereo ring buffer, at least 1024 frames deep (see 6.4) |
 | Input | canonical pad is SNES-class digital: dpad, A/B/X/Y, LB/RB, Start/Select — games may assume nothing more. 1 pad guaranteed, up to 4 via hub. Analog axes are reported when hardware has them but NEVER required; the console synthesizes left-stick to dpad bits so any pad plays any game |
 | Storage | per-game save blobs on SD (see 6.5); ROM read-only data via pointer |
 | Game slot | flash-XIP ROMs up to 3 MB guaranteed on all boards |
@@ -154,7 +154,16 @@ Semantics notes:
   ceiling, not an allocation). `save_read` returns the stored length.
   Keyed by header `game_id`.
 - Audio underrun plays silence; games poll `audio_space` and top up.
-  48 kHz fixed.
+  48 kHz fixed. The ring holds 1024 frames (~21 ms) guaranteed; a console
+  may offer more but never less. **`audio_push` accepts at most
+  `audio_space()` frames and silently discards the rest.** That is not an
+  error and there is no return value, so a game that pushes one video frame
+  of audio (48000/60 = 800 frames) in a single call and moves on will lose
+  whatever did not fit and run *under* rate. Because the console's HDMI
+  clock-regeneration packets declare 48 kHz, an under-rate stream is a clock
+  mismatch, and a sink typically resolves it by muting. Top up in several
+  smaller pushes spread across the frame, including while waiting on
+  `present()`, so the ring is refilled as the console drains it.
 - `video_mode` 1 = 320x180 letterbox: the canvas is interpreted as
   320x180 (rows 0..179), displayed centered with 30-row black bars.
 - Disk (api v2): read-only streaming from the game's own data directory,
