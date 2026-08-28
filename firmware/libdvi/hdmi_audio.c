@@ -25,29 +25,30 @@ static uint8_t bch(const uint8_t *data, int nbytes) {
 uint8_t hdmi_ecc_header(const uint8_t hdr[3]) { return bch(hdr, 3); }
 uint8_t hdmi_ecc_sub(const uint8_t sub[7]) { return bch(sub, 7); }
 
-// IEC 60958 subframe: 24-bit sample field (we place 16-bit PCM in the MSBs)
-// plus V/U/C/P status bits. HDMI packs L and R into one 7-byte subpacket.
-static void pack_subframe(uint8_t out[7], int16_t l, int16_t r,
-                          bool channel_status_bit_l, bool channel_status_bit_r) {
-    uint32_t lw = ((uint32_t)(uint16_t)l) << 8;   // 16-bit PCM -> upper bits
-    uint32_t rw = ((uint32_t)(uint16_t)r) << 8;
-    out[0] = (uint8_t)(lw & 0xff);
-    out[1] = (uint8_t)((lw >> 8) & 0xff);
-    out[2] = (uint8_t)((lw >> 16) & 0xff);
-    out[3] = (uint8_t)(rw & 0xff);
-    out[4] = (uint8_t)((rw >> 8) & 0xff);
-    out[5] = (uint8_t)((rw >> 16) & 0xff);
-    // byte 6: bits for both channels - V=0 (valid), U=0, C=status, P=parity
-    uint8_t bits = 0;
-    if (channel_status_bit_l) bits |= 0x04;    // C for left
-    if (channel_status_bit_r) bits |= 0x40;    // C for right
-    // parity: even parity over the 26 bits of each subframe
-    uint32_t pl = lw ^ (bits & 0x07), pr = rw ^ ((bits >> 4) & 0x07);
-    int cl = 0, cr = 0;
-    for (int i = 0; i < 32; i++) { cl += (pl >> i) & 1; cr += (pr >> i) & 1; }
-    if (cl & 1) bits |= 0x08;                  // P for left
-    if (cr & 1) bits |= 0x80;                  // P for right
-    out[6] = bits;
+// IEC 60958 subframe pair (HDMI 1.4b 7.2): 16-bit PCM sits in bytes 1-2 of
+// each channel's 3-byte sample field, byte 0 stays zero (it is the low 8 bits
+// of a 24-bit sample we do not have). Byte 6 carries the V/U/C/P bits for
+// both channels: V (bit0/bit4) marks the sample VALID and must be set, and P
+// (bit3/bit7) is even parity over the two PCM bytes plus those status bits.
+// Leaving V clear, or computing the parity over a different bit set, makes a
+// sink reject every sample even though the packet's BCH ECC is perfect.
+static int byte_parity(uint8_t x) {
+    int p = 0;
+    while (x) { p ^= x & 1; x >>= 1; }
+    return p;
+}
+
+static void pack_subframe(uint8_t out[7], int16_t l, int16_t r) {
+    const uint8_t vuc = 1;                     // valid, no user data, no status
+    out[0] = 0;
+    out[1] = (uint8_t)l;
+    out[2] = (uint8_t)((uint16_t)l >> 8);
+    out[3] = 0;
+    out[4] = (uint8_t)r;
+    out[5] = (uint8_t)((uint16_t)r >> 8);
+    int pl = byte_parity(out[1]) ^ byte_parity(out[2]) ^ byte_parity(vuc);
+    int pr = byte_parity(out[4]) ^ byte_parity(out[5]) ^ byte_parity(vuc);
+    out[6] = (uint8_t)((vuc << 0) | (pl << 3) | (vuc << 4) | (pr << 7));
 }
 
 void hdmi_pkt_audio(hdmi_packet_t *p, const int16_t *lr, int frames,
@@ -58,15 +59,15 @@ void hdmi_pkt_audio(hdmi_packet_t *p, const int16_t *lr, int frames,
     uint8_t layout = 0;                        // layout 0 = 2 channels
     uint8_t sample_present = (uint8_t)((1u << frames) - 1);
     uint8_t sample_flat = 0;                   // no muted samples
+    // header[2] carries B in the UPPER nibble: it flags which frame in the
+    // packet starts a 192-frame IEC channel-status block.
     uint8_t b = frame0_is_block_start ? 0x01 : 0x00;
     p->header[0] = HDMI_PKT_AUDIO;
     p->header[1] = (uint8_t)(sample_present | (layout << 4));
-    p->header[2] = (uint8_t)((sample_flat << 4) | b);
+    p->header[2] = (uint8_t)((b << 4) | sample_flat);
     (void)frame_counter;
-    for (int i = 0; i < frames; i++) {
-        bool cs = frame0_is_block_start && i == 0;
-        pack_subframe(p->sub[i], lr[i * 2], lr[i * 2 + 1], cs, cs);
-    }
+    for (int i = 0; i < frames; i++)
+        pack_subframe(p->sub[i], lr[i * 2], lr[i * 2 + 1]);
 }
 
 void hdmi_pkt_acr(hdmi_packet_t *p, uint32_t n, uint32_t cts) {
