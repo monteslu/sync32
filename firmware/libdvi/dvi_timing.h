@@ -53,7 +53,7 @@ static_assert(__builtin_offsetof(dma_cb_t, c.ctrl) == __builtin_offsetof(dma_cha
 // scheduled when audio is running; otherwise these chunks extend the
 // existing control-symbol runs and the output is bit-identical to DVI.
 #define DVI_ISLAND_CHUNKS 2
-#define DVI_SYNC_LANE_CHUNKS (DVI_STATE_COUNT + DVI_ISLAND_CHUNKS)
+#define DVI_SYNC_LANE_CHUNKS (DVI_STATE_COUNT + DVI_ISLAND_CHUNKS + 2)
 #define DVI_NOSYNC_LANE_CHUNKS (2 + DVI_ISLAND_CHUNKS + 1)
 
 struct dvi_scanline_dma_list {

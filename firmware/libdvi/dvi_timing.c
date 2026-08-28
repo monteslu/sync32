@@ -318,9 +318,16 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 	_set_data_cb(&synclist[0], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off, t->h_front_porch / DVI_SYMBOLS_PER_WORD, 2, false);
 	_set_data_cb(&synclist[1], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_on,  t->h_sync_width  / DVI_SYMBOLS_PER_WORD, 2, false);
 	if (island_words) {
-		_set_data_cb(&synclist[2], &dma_cfg[TMDS_SYNC_LANE],
+		// EVERY lane must emit the same number of clocks per scanline or the
+		// three TMDS channels desynchronise (symptom: ch0/ch2 DMA stalls at
+		// the island length while ch1 keeps running, and no sink locks).
+		// The other lanes spend 8 clocks on the island preamble, so the sync
+		// lane spends those 8 clocks on its normal control symbol.
+		_set_data_cb(&synclist[2], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off,
+			8 / DVI_SYMBOLS_PER_WORD, 2, false);
+		_set_data_cb(&synclist[3], &dma_cfg[TMDS_SYNC_LANE],
 			hdmi_island_words(island_buf, 0), island_words, 0, false);
-		_set_data_cb(&synclist[3], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off,
+		_set_data_cb(&synclist[4], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off,
 			porch_rest / DVI_SYMBOLS_PER_WORD, 2, true);
 	} else {
 		_set_data_cb(&synclist[2], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off, t->h_back_porch  / DVI_SYMBOLS_PER_WORD, 2, true);
@@ -353,7 +360,7 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 		// unconditionally left the intervening control blocks uninitialised
 		// and the DMA chain walked into garbage (black screen, dead boot).
 		int target_block = (i == TMDS_SYNC_LANE)
-			? (island_words ? 4 : 3)
+			? (island_words ? 5 : 3)
 			: (island_words ? 4 : 1);
 		// blocks past the active one are never reached by the chain, but the
 		// ones BEFORE it must all be valid: with no island the extra chunks
@@ -382,16 +389,11 @@ void __dvi_func(dvi_update_scanline_data_dma)(const struct dvi_timing *t, const 
 		const uint32_t *lane_tmdsbuf = tmdsbuf + i * t->h_active_pixels / DVI_SYMBOLS_PER_WORD;
 #endif
 		// indices account for the always-present island block
-		if (i == TMDS_SYNC_LANE)
-			dvi_lane_from_list(l, i)[4].read_addr = lane_tmdsbuf;
-		else
-			dvi_lane_from_list(l, i)[4].read_addr = lane_tmdsbuf;
+		dvi_lane_from_list(l, i)[i == TMDS_SYNC_LANE ? 5 : 4].read_addr = lane_tmdsbuf;
 		// point the island block at whichever buffer the audio pump filled
 		int ib = hdmi_island_ready();
-		if (i == TMDS_SYNC_LANE)
-			dvi_lane_from_list(l, i)[2].read_addr = hdmi_island_words(ib, 0);
-		else
-			dvi_lane_from_list(l, i)[2].read_addr = hdmi_island_words(ib, i);
+		dvi_lane_from_list(l, i)[i == TMDS_SYNC_LANE ? 3 : 2].read_addr =
+			hdmi_island_words(ib, i);
 	}
 	hdmi_island_consume();
 }
