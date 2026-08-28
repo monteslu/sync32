@@ -127,20 +127,35 @@ void hdmi_encode_island(const hdmi_packet_t *p, bool hsync, bool vsync,
         memcpy(sub[i], p->sub[i], 7);
         sub[i][7] = hdmi_ecc_sub(p->sub[i]);
     }
-    for (int px = 0; px < 32; px++) {
-        // channel 0: hsync bit0, vsync bit1, island-started bit2, header bit3
-        uint8_t started = (uint8_t)((px == 0 && first_packet) ? 0 : 1);
-        uint8_t c0 = (uint8_t)((hsync ? 1 : 0) | ((vsync ? 1 : 0) << 1) |
-                               (started << 2) | (bit_at(hdr, px) << 3));
-        out[0][px] = hdmi_terc4[c0];
-        // channels 1 and 2: bit px*2 and px*2+1 of every subpacket
-        uint8_t n1 = 0, n2 = 0;
-        for (int s = 0; s < 4; s++) {
-            n1 = (uint8_t)(n1 | (bit_at(sub[s], px * 2) << s));
-            n2 = (uint8_t)(n2 | (bit_at(sub[s], px * 2 + 1) << s));
+
+    // Transpose the four subpackets once: nib[k] holds, in bits 0..3, bit k of
+    // sub0..sub3. The per-pixel loop then reads two nibbles instead of doing
+    // eight separate bit extracts, which is where nearly all of this function's
+    // time used to go -- and this runs from the DVI scanline path, where the
+    // whole island build has to fit inside a 31.75us line.
+    uint8_t nib[64];
+    memset(nib, 0, sizeof nib);
+    for (int s = 0; s < 4; s++) {
+        const uint8_t *bytes = sub[s];
+        uint8_t bit = (uint8_t)(1u << s);
+        for (int byte = 0; byte < 8; byte++) {
+            uint8_t v = bytes[byte];
+            int base = byte * 8;
+            while (v) {                       // only set bits cost anything
+                int k = __builtin_ctz(v);
+                nib[base + k] |= bit;
+                v &= (uint8_t)(v - 1);
+            }
         }
-        out[1][px] = hdmi_terc4[n1];
-        out[2][px] = hdmi_terc4[n2];
+    }
+
+    const uint8_t sync_bits = (uint8_t)((hsync ? 1 : 0) | ((vsync ? 1 : 0) << 1));
+    for (int px = 0; px < 32; px++) {
+        uint8_t started = (uint8_t)((px == 0 && first_packet) ? 0 : 1);
+        uint8_t c0 = (uint8_t)(sync_bits | (started << 2) | (bit_at(hdr, px) << 3));
+        out[0][px] = hdmi_terc4[c0];
+        out[1][px] = hdmi_terc4[nib[px * 2]];
+        out[2][px] = hdmi_terc4[nib[px * 2 + 1]];
     }
 }
 
