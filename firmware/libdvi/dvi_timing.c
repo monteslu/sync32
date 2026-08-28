@@ -330,11 +330,17 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 		dma_cb_t *cblist = dvi_lane_from_list(l, i);
 		if (i != TMDS_SYNC_LANE) {
 			if (island_words) {
+				// order matters: the DMA walks blocks 0,1,2,... so the
+				// 8-clock data-island preamble must be block 1, immediately
+				// before the island itself (HDMI 1.4b 5.2.1.1).
+				static const uint32_t preamble_sym = 0x2acab;   // CTL 0b01, doubled
 				_set_data_cb(&cblist[0], &dma_cfg[i], sym_no_sync,
-					(t->h_front_porch + t->h_sync_width) / DVI_SYMBOLS_PER_WORD, 2, false);
-				_set_data_cb(&cblist[1], &dma_cfg[i],
+					(t->h_front_porch + t->h_sync_width - 8) / DVI_SYMBOLS_PER_WORD, 2, false);
+				_set_data_cb(&cblist[1], &dma_cfg[i], &preamble_sym,
+					8 / DVI_SYMBOLS_PER_WORD, 0, false);
+				_set_data_cb(&cblist[2], &dma_cfg[i],
 					hdmi_island_words(island_buf, i), island_words, 0, false);
-				_set_data_cb(&cblist[2], &dma_cfg[i], sym_no_sync,
+				_set_data_cb(&cblist[3], &dma_cfg[i], sym_no_sync,
 					porch_rest / DVI_SYMBOLS_PER_WORD, 2, false);
 			} else {
 				_set_data_cb(&cblist[0], &dma_cfg[i], sym_no_sync,
@@ -348,7 +354,7 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 		// and the DMA chain walked into garbage (black screen, dead boot).
 		int target_block = (i == TMDS_SYNC_LANE)
 			? (island_words ? 4 : 3)
-			: (island_words ? 3 : 1);
+			: (island_words ? 4 : 1);
 		// blocks past the active one are never reached by the chain, but the
 		// ones BEFORE it must all be valid: with no island the extra chunks
 		// would otherwise hold stale/zero descriptors and stall the lane
@@ -379,13 +385,13 @@ void __dvi_func(dvi_update_scanline_data_dma)(const struct dvi_timing *t, const 
 		if (i == TMDS_SYNC_LANE)
 			dvi_lane_from_list(l, i)[4].read_addr = lane_tmdsbuf;
 		else
-			dvi_lane_from_list(l, i)[3].read_addr = lane_tmdsbuf;
+			dvi_lane_from_list(l, i)[4].read_addr = lane_tmdsbuf;
 		// point the island block at whichever buffer the audio pump filled
 		int ib = hdmi_island_ready();
 		if (i == TMDS_SYNC_LANE)
 			dvi_lane_from_list(l, i)[2].read_addr = hdmi_island_words(ib, 0);
 		else
-			dvi_lane_from_list(l, i)[1].read_addr = hdmi_island_words(ib, i);
+			dvi_lane_from_list(l, i)[2].read_addr = hdmi_island_words(ib, i);
 	}
 	hdmi_island_consume();
 }

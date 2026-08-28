@@ -13,7 +13,7 @@
 #include "dvi.h"
 #include "hdmi_island.h"
 
-#define ISLAND_PREAMBLE 8
+#define ISLAND_PREAMBLE 0   /* preamble lives in the preceding control run */
 #define ISLAND_GUARD    2
 #define ISLAND_PACKET   32
 #define ISLAND_TOTAL    (ISLAND_PREAMBLE + ISLAND_GUARD + ISLAND_PACKET + ISLAND_GUARD)
