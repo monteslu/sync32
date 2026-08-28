@@ -98,9 +98,14 @@ int s32_xip_stage_and_launch(const char *filename) {
     uint8_t *chunk = (uint8_t *)0x20060000;
     uint32_t done = 0;
     int rc = 0;
+    // CRC of the CODE IMAGE as read from the file: the header's crc32 covers
+    // everything after the header (code + any trailing sections such as the
+    // launcher icon), so it cannot be compared against the staged slot alone
+    uint32_t crc_code = 0;
     while (done < code_size) {
         UINT want = code_size - done > 4096 ? 4096 : code_size - done;
         if (f_read(&f, chunk, want, &br) != FR_OK || br == 0) { rc = -6; break; }
+        crc_code = s32_crc32_cont(chunk, br, crc_code);
         if (br < 4096) memset(chunk + br, 0xff, 4096 - br);
         if ((done & 0xFFFF) == 0) {
             uint32_t left = code_size - done;
@@ -112,7 +117,8 @@ int s32_xip_stage_and_launch(const char *filename) {
     }
     f_close(&f);
 
-    if (rc == 0 && s32_crc32((const void *)SLOT_XIP_ADDR, code_size) != crc_want)
+    // verify the slot against the code CRC computed while reading the file
+    if (rc == 0 && s32_crc32((const void *)SLOT_XIP_ADDR, code_size) != crc_code)
         rc = -7;
 
     if (rc == 0) {
