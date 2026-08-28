@@ -424,6 +424,13 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 }
 
 void __dvi_func(dvi_update_scanline_data_dma)(const struct dvi_timing *t, const uint32_t *tmdsbuf, struct dvi_scanline_dma_list *l) {
+	// Resolve the island buffer ONCE for the whole scanline. Calling
+	// hdmi_island_ready() inside the per-lane loop asks three times, and if a
+	// build lands between two of those calls the three TMDS lanes end up
+	// pointed at different island buffers. The lanes then carry different
+	// numbers of symbols, dbg_tcr never reaches the expected count on all
+	// three, and dvi_dma_irq_handler's barrier spins forever.
+	int ib = hdmi_island_ready();
 	for (int i = 0; i < N_TMDS_LANES; ++i) {
 #if DVI_MONOCHROME_TMDS
 		const uint32_t *lane_tmdsbuf = tmdsbuf;
@@ -432,8 +439,6 @@ void __dvi_func(dvi_update_scanline_data_dma)(const struct dvi_timing *t, const 
 #endif
 		// indices account for the always-present island block
 		dvi_lane_from_list(l, i)[6].read_addr = lane_tmdsbuf;
-		// point the island block at whichever buffer the audio pump filled
-		int ib = hdmi_island_ready();
 		dvi_lane_from_list(l, i)[i == TMDS_SYNC_LANE ? 1 : 2].read_addr =
 			hdmi_island_words(ib, i);
 	}
