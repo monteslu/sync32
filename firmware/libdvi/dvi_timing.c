@@ -312,7 +312,11 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 	// legal HDMI island and invisible to the sink.
 	int island_words = hdmi_island_words_len();
 	int island_buf = hdmi_island_ready();
-	int porch_rest = t->h_back_porch - island_words * DVI_SYMBOLS_PER_WORD;
+	// The back porch carries: 8 clocks preamble + 36 clocks island + the
+	// remainder. Forgetting the preamble here made every scanline 4 clocks
+	// short (796 of 800), which video tolerates but no sink will lock data
+	// islands onto.
+	int porch_rest = t->h_back_porch - 8 - island_words * DVI_SYMBOLS_PER_WORD;
 
 	dma_cb_t *synclist = dvi_lane_from_list(l, TMDS_SYNC_LANE);
 	_set_data_cb(&synclist[0], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off, t->h_front_porch / DVI_SYMBOLS_PER_WORD, 2, false);
@@ -341,8 +345,10 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 				// 8-clock data-island preamble must be block 1, immediately
 				// before the island itself (HDMI 1.4b 5.2.1.1).
 				static const uint32_t preamble_sym = 0x2acab;   // CTL 0b01, doubled
+				// full front porch + sync; the preamble comes out of the
+				// BACK porch (which is where the island lives), not here
 				_set_data_cb(&cblist[0], &dma_cfg[i], sym_no_sync,
-					(t->h_front_porch + t->h_sync_width - 8) / DVI_SYMBOLS_PER_WORD, 2, false);
+					(t->h_front_porch + t->h_sync_width) / DVI_SYMBOLS_PER_WORD, 2, false);
 				_set_data_cb(&cblist[1], &dma_cfg[i], &preamble_sym,
 					8 / DVI_SYMBOLS_PER_WORD, 0, false);
 				_set_data_cb(&cblist[2], &dma_cfg[i],

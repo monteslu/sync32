@@ -4,8 +4,10 @@
 
 // HDMI 1.4b table 5-4: TERC4 encoding, 4 bits -> 10-bit symbol
 const uint16_t hdmi_terc4[16] = {
-    0x29c, 0x263, 0x2e4, 0x2e2, 0x171, 0x11e, 0x18e, 0x13c,
-    0x39c, 0x2cc, 0x31c, 0x234, 0x2c4, 0x1cc, 0x1c4, 0x1a4,
+    0x29c, 0x263, 0x2e4, 0x2e2,
+    0x171, 0x11e, 0x18e, 0x13c,
+    0x2cc, 0x139, 0x19c, 0x2c6,
+    0x28e, 0x271, 0x163, 0x2c3,
 };
 
 // BCH(255,247) over GF(2) with generator x^8 + x^7 + x^6 + x^4 + 1 (0xd1),
@@ -99,8 +101,22 @@ void hdmi_pkt_audio_infoframe(hdmi_packet_t *p) {
 }
 
 // ---- island encoding -----------------------------------------------------
-// A data island carries 32 TERC4 "pixels" per packet: each pixel encodes
-// 1 bit from the header and 2 bits from each of the four subpackets.
+// A data island is 32 TERC4 "pixels". Each pixel carries ONE header bit and
+// TWO consecutive bits from EACH of the four subpackets (HDMI 1.4b 5.2.3.4:
+// "BCH packets 0 to 3 are transferred two bits at a time"). So a subpacket's
+// bit index is px*2 and px*2+1 -- 32 pixels x 2 bits = the full 64-bit
+// subpacket, while the 32-bit header sends one bit per pixel.
+//
+// Channel assignment (HDMI 1.4b, data_island_data nibble per channel):
+//   ch0 = {header_bit, island_started, vsync, hsync}
+//   ch1 = the FIRST bit of each of sub0..sub3
+//   ch2 = the SECOND bit of each of sub0..sub3
+// Splitting sub0/sub1 onto ch1 and sub2/sub3 onto ch2 is NOT the layout: it
+// scrambles all four subpackets and drops half of every one of them.
+static inline uint8_t bit_at(const uint8_t *bytes, int idx) {
+    return (uint8_t)((bytes[idx >> 3] >> (idx & 7)) & 1);
+}
+
 void hdmi_encode_island(const hdmi_packet_t *p, bool hsync, bool vsync,
                         bool first_packet, uint32_t out[3][32]) {
     uint8_t hdr[4], sub[4][8];
@@ -111,20 +127,19 @@ void hdmi_encode_island(const hdmi_packet_t *p, bool hsync, bool vsync,
         sub[i][7] = hdmi_ecc_sub(p->sub[i]);
     }
     for (int px = 0; px < 32; px++) {
-        // channel 0: HSYNC, VSYNC, header bit, and the island preamble flag
-        uint8_t hbit = (uint8_t)((hdr[px >> 3] >> (px & 7)) & 1);
+        // channel 0: hsync bit0, vsync bit1, island-started bit2, header bit3
+        uint8_t started = (uint8_t)((px == 0 && first_packet) ? 0 : 1);
         uint8_t c0 = (uint8_t)((hsync ? 1 : 0) | ((vsync ? 1 : 0) << 1) |
-                               (hbit << 2) |
-                               (((px == 0 && first_packet) ? 0 : 1) << 3));
+                               (started << 2) | (bit_at(hdr, px) << 3));
         out[0][px] = hdmi_terc4[c0];
-        // channels 1 and 2: two subpacket bits each
-        for (int ch = 1; ch <= 2; ch++) {
-            int s0 = (ch - 1) * 2, s1 = s0 + 1;
-            uint8_t b0 = (uint8_t)((sub[s0][px >> 3] >> (px & 7)) & 1);
-            uint8_t b1 = (uint8_t)((sub[s1][px >> 3] >> (px & 7)) & 1);
-            uint8_t nibble = (uint8_t)(b0 | (b1 << 1));
-            out[ch][px] = hdmi_terc4[nibble];
+        // channels 1 and 2: bit px*2 and px*2+1 of every subpacket
+        uint8_t n1 = 0, n2 = 0;
+        for (int s = 0; s < 4; s++) {
+            n1 = (uint8_t)(n1 | (bit_at(sub[s], px * 2) << s));
+            n2 = (uint8_t)(n2 | (bit_at(sub[s], px * 2 + 1) << s));
         }
+        out[1][px] = hdmi_terc4[n1];
+        out[2][px] = hdmi_terc4[n2];
     }
 }
 
