@@ -54,6 +54,46 @@ static uint32_t tmds_buf_c[TMDS_WORDS];
 // TMDS encode that ran for hours on this board in the lab demos.
 static uint16_t line16[320];
 volatile uint8_t s32_video_mode;        // 0 = 320x240, 1 = 320x180 letterbox
+// HDMI island pump. Called from the DVI scanline IRQ so it runs on EVERY
+// scanline, vertical blanking included -- the working libdvi HDMI-audio forks
+// build their packets from the same per-scanline hook, and emit the AVI/Audio
+// InfoFrames and ACR during vblank. Driving this from the core1 scanout loop
+// instead only reaches the 240 active lines, which starves the stream and puts
+// every control packet mid-picture.
+//
+// The island's ch0 nibble must carry the SAME sync levels as the control runs
+// on either side of it (get_ctrl_sym(!v_sync_polarity, !h_sync_polarity) on an
+// active line), or sync inverts for the 44 clocks of the island.
+#define S32_ISLAND_HSYNC (!DVI_TIMING.h_sync_polarity)
+#define S32_ISLAND_VSYNC (!DVI_TIMING.v_sync_polarity)
+void __not_in_flash_func(s32_hdmi_island_pump)(void) {
+    if (!hdmi_island_is_armed()) return;
+    if (hdmi_island_pending()) return;      // previous island not sent yet
+    static uint16_t ctl_ctr;
+    hdmi_packet_t pkt;
+    // Control-packet cadence taken from the working references: AVI and Audio
+    // InfoFrames ~30/s each and ACR ~60/s. 1 island in 96 with ACR on two of
+    // every four slots lands on those rates.
+    if ((ctl_ctr % 96) == 0) {
+        unsigned slot = (ctl_ctr / 96) & 3;
+        if (slot == 0)      hdmi_pkt_avi_infoframe(&pkt);
+        else if (slot == 1) hdmi_pkt_audio_infoframe(&pkt);
+        else                hdmi_pkt_acr(&pkt, 6144, 25200);
+        ctl_ctr++;
+        hdmi_island_build(&pkt, S32_ISLAND_HSYNC, S32_ISLAND_VSYNC);
+    } else {
+        int16_t pcm[8];
+        extern int s32_audio_take(int16_t *out, int max_frames);
+        int n = s32_audio_take(pcm, 4);
+        if (n > 0) {
+            ctl_ctr++;
+            hdmi_pkt_audio(&pkt, pcm, n, aud_block_start, 0);
+            aud_block_start = false;
+            hdmi_island_build(&pkt, S32_ISLAND_HSYNC, S32_ISLAND_VSYNC);
+        }
+    }
+}
+
 static void __not_in_flash_func(core1_scanout)(void) {
     dvi_register_irqs_this_core(&dvi0, DMA_IRQ_0);
     dvi_start(&dvi0);
@@ -76,49 +116,6 @@ static void __not_in_flash_func(core1_scanout)(void) {
         tmds_encode_data_channel_16bpp(pix, tmdsbuf + 2 * words_per_channel, pixwidth / 2, DVI_16BPP_RED_MSB,   DVI_16BPP_RED_LSB  );
         queue_add_blocking_u32(&dvi0.q_tmds_valid, &tmdsbuf);
         s32_scanline = y;
-        // The island sits in the BACK PORCH, after the hsync pulse, and the
-        // control symbols on either side of it are get_ctrl_sym(vsync,
-        // !h_sync_polarity). 640x480p60 is negative-sync, so the idle level
-        // there is hsync=1, vsync=1. The island's ch0 nibble must carry the
-        // SAME levels or the sync signal inverts for 44 clocks of every
-        // scanline and no sink will lock onto the islands.
-        #define S32_ISLAND_HSYNC (!DVI_TIMING.h_sync_polarity)
-        #define S32_ISLAND_VSYNC (!DVI_TIMING.v_sync_polarity)
-        // HDMI audio: build one data island per scanline while the game is
-        // pushing samples. 48kHz over 31500 lines/s needs 1.52 frames per
-        // line, so a 4-frame packet every ~3 lines keeps the sink fed.
-        if (hdmi_island_is_armed()) {
-            static uint16_t ctl_ctr;
-            hdmi_packet_t pkt;
-            // Control-packet cadence, matched to what the working libdvi
-            // HDMI-audio forks actually do rather than to my own reading of
-            // the spec text: they send the AVI and Audio InfoFrames once per
-            // frame each (~30/s) and ACR once per frame (~60/s), all during
-            // vertical blanking. An earlier version of this code chased a
-            // "300 ACR/s minimum" and burned 1 island in 32 on control
-            // packets; the references show that is unnecessary.
-            // 1 island in 96, with ACR taking two of every four slots, lands
-            // on the reference rates almost exactly: AVI 30/s, Audio
-            // InfoFrame 30/s, ACR 60/s at ~11.5k islands/s.
-            if ((ctl_ctr % 96) == 0) {
-                unsigned slot = (ctl_ctr / 96) & 3;
-                if (slot == 0)      hdmi_pkt_avi_infoframe(&pkt);
-                else if (slot == 1) hdmi_pkt_audio_infoframe(&pkt);
-                else                hdmi_pkt_acr(&pkt, 6144, 25200);
-                ctl_ctr++;
-                hdmi_island_build(&pkt, S32_ISLAND_HSYNC, S32_ISLAND_VSYNC);
-            } else {
-                int16_t pcm[8];
-                extern int s32_audio_take(int16_t *out, int max_frames);
-                int n = s32_audio_take(pcm, 4);
-                if (n > 0) {
-                    ctl_ctr++;
-                    hdmi_pkt_audio(&pkt, pcm, n, aud_block_start, 0);
-                    aud_block_start = false;
-                    hdmi_island_build(&pkt, S32_ISLAND_HSYNC, S32_ISLAND_VSYNC);
-                }
-            }
-        }
         if (++y == 240) { y = 0; vframe++; }
     }
 }
