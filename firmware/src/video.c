@@ -82,16 +82,24 @@ static void __not_in_flash_func(core1_scanout)(void) {
         if (hdmi_island_is_armed()) {
             static uint16_t ctl_ctr;
             hdmi_packet_t pkt;
-            // Every 128th island carries a control packet: the sink needs the
-            // AVI InfoFrame to switch out of DVI mode at all, the audio
-            // InfoFrame to describe the stream, and ACR to derive the audio
-            // clock (N=6144, CTS=25200 for 48kHz at a 25.2MHz pixel clock).
-            if ((ctl_ctr & 0x7f) == 0) {
-                switch ((ctl_ctr >> 7) & 3) {
-                    case 0: hdmi_pkt_avi_infoframe(&pkt); break;
-                    case 1: hdmi_pkt_audio_infoframe(&pkt); break;
-                    default: hdmi_pkt_acr(&pkt, 6144, 25200); break;
-                }
+            // Control-packet cadence is set by HDMI 1.4b minimums, not by
+            // convenience. ACR must go out at least 300 times a second
+            // (7.2.3) or the sink cannot regenerate the audio clock, and a
+            // stream whose sample packets are otherwise perfect stays
+            // silent. The AVI InfoFrame must go out at least every two
+            // fields (~30/s) or a sink treats the link as DVI and discards
+            // every island. The old 1-in-128 rotation gave each type ~29/s,
+            // which met neither.
+            // 14400 islands/s are available on the active lines and audio
+            // needs 12000, so every 32nd island is a control packet: ACR
+            // takes 13 of every 16 of those (~366/s), the AVI InfoFrame 2
+            // (~56/s) and the Audio InfoFrame 1 (~28/s), leaving 55800Hz of
+            // audio capacity against the 48000 required.
+            if ((ctl_ctr & 0x1f) == 0) {
+                unsigned slot = (ctl_ctr >> 5) & 15;
+                if (slot == 0 || slot == 8) hdmi_pkt_avi_infoframe(&pkt);
+                else if (slot == 4)         hdmi_pkt_audio_infoframe(&pkt);
+                else                        hdmi_pkt_acr(&pkt, 6144, 25200);
                 ctl_ctr++;
                 hdmi_island_build(&pkt, false, false);
             } else {
