@@ -85,7 +85,8 @@ at 16x16 (or pixel-doubled to 32x32 for the selected entry) to the left
 of the title text; a ROM without an icon gets a default glyph. Existing
 ROMs carry zeros here, so the field is optional by construction.
 `mks32.py --icon icon.png` embeds one (alpha below 50% becomes the
-colorkey).
+colorkey). A game may instead ship an `icon.bmp` in its own namespace, which
+takes precedence and needs no build step at all: see 3.3.
 
 ### 3.2 Game forms: folder and archive
 
@@ -112,12 +113,16 @@ would make position decide meaning ("a `.s32` at the root is a game, a `.s32`
 in a folder is not"), a rule that cannot be stated in one sentence and breaks
 as soon as a file is moved.
 
-There is no manifest. `main.s32e` carries the same 64-byte header as any
-`.s32`, so title, icon, `game_id`, **`load_mode` (RAM-load or flash-XIP)**,
-`video_mode`, `api_version` and entry point all come from the executable
-itself. A folder has no metadata of its own that could go stale or disagree
-with the code beside it, and a folder-form game chooses its load mode exactly
-as a single-file one does.
+`main.s32e` carries the same 64-byte header as any `.s32`, so everything
+about how the code is *loaded* comes from the executable: **`load_mode`
+(RAM-load or flash-XIP)**, `video_mode`, `api_version`, `entry_offset` and
+`code_size`. Those are properties of the code and cannot be anywhere else. A
+folder-form game therefore chooses its load mode exactly as a single-file one
+does.
+
+What the launcher *displays* is separate, and comes from files in the
+namespace: see 3.3. That split is what lets an author reuse a prebuilt
+`main.s32e` and still ship their own game.
 
 Packing is `tar cf game.s32 -C gamedir .` and unpacking is `tar xf`. The
 console requires no tool of ours to produce a playable archive, and a player
@@ -142,7 +147,72 @@ A card mixing both forms is the expected case:
 The launcher lists all of these together, each showing the title and icon
 from its header.
 
-### 3.3 The archive form is a tar
+### 3.3 Identity: what the launcher shows
+
+A game's title, icon and save identity come from files in its own namespace,
+not from the executable's header. That is deliberate: an author who reuses
+somebody else's prebuilt `main.s32e` (a Lua or BASIC runtime, say, never
+touching a compiler) cannot change a header they did not build, and the
+header would otherwise name the runtime rather than their game.
+
+Because identity lives in the namespace, it is identical in both forms. A
+folder and a tar of that folder carry the same files and the launcher reads
+them the same way, so `tar cf` stays a pure repack.
+
+Everything here is optional and everything is by fixed name. There is
+nothing to declare and no paths to get wrong:
+
+| File | Is |
+|---|---|
+| `info.txt` | `key = value` lines, one per line. Only `title` is defined so far. |
+| `icon.bmp` | a 16x16 BMP shown beside the title |
+
+```
+cavecrawl/
+  main.s32e     the executable      (fixed name, required)
+  info.txt      title = Cave Crawler
+  icon.bmp      16x16
+  main.lua      whatever else the game needs
+```
+
+A game with no resources at all is just `main.s32e` and perhaps `info.txt`.
+
+**`game_id` is derived, never written.** It is the name of the game with any
+extension removed: folder `cavecrawl/` and archive `cavecrawl.s32` both
+yield `cavecrawl`. An opaque identifier an author has to invent is one they
+will leave blank or duplicate, and it keys save files, so it has to be right
+without anyone thinking about it. Renaming a game therefore moves its saves;
+the `.s32id` marker (6.6) is the escape hatch when that is not wanted.
+
+`info.txt` is parsed as literally as it looks: split each line at the first
+`=`, trim spaces from both sides, ignore blank lines and anything starting
+with `#`, ignore any line that does not parse or names a key we do not know.
+There is no nesting, no quoting and no types. It is editable in any text
+editor on any machine, and a malformed file costs a default rather than an
+error. JSON and YAML were considered and rejected: both need a real parser
+(JSON is 500+ lines done properly, and there is no small correct YAML
+parser), and both fail hard on the kind of mistake a person makes in a text
+editor, which is the wrong trade for a file whose only job is to supply a
+display name.
+
+`icon.bmp` is read only if it is a 16x16 uncompressed BMP with a
+`BITMAPINFOHEADER` at 24 or 32 bits per pixel. Anything else, including a
+missing or truncated file, is ignored and the launcher draws its default
+glyph. An icon is decoration, so every failure is silent rather than an
+error worth reporting. BMP is used because it is the format a person can
+actually produce: every paint program on every desktop exports it, it is
+uncompressed so decoding is a header check and a pixel loop, and unlike a
+raw RGB565 blob it needs no tool of ours to create.
+
+Where an executable does carry header values (title, and an icon at
+`icon_offset`), they are used only when the corresponding file is absent, so
+a cart that builds its own `main.s32e` needs no extra files and behaves
+exactly as before.
+
+`main.s32e`, `info.txt`, `icon.bmp` and `.s32id` are the console's own files
+and are invisible to `disk_open` and `disk_list`.
+
+### 3.4 The archive form is a tar
 
 A `.s32` archive is an ordinary uncompressed tar (USTAR). No compression is
 permitted: a compressed member cannot be executed in place and would have to
