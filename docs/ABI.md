@@ -43,7 +43,7 @@ console.
 | Audio | 48 kHz signed 16-bit stereo ring buffer, at least 1024 frames deep (see 6.4) |
 | Input | canonical pad is SNES-class digital: dpad, A/B/X/Y, LB/RB, Start/Select — games may assume nothing more. 1 pad guaranteed, up to 4 via hub. Analog axes are reported when hardware has them but NEVER required; the console synthesizes left-stick to dpad bits so any pad plays any game |
 | Storage | per-game save blobs on SD (see 6.5); ROM read-only data via pointer |
-| Game slot | flash-XIP ROMs up to 3 MB guaranteed on all boards |
+| Game slot | flash-XIP ROMs up to 3 MB guaranteed on all boards; a game ships as one `.s32` file or as a folder holding `main.s32e` (see 3.2) |
 
 The console reserve (compositor, USB, SD, audio, launcher services) lives
 OUTSIDE the game region and is not the game's concern.
@@ -87,6 +87,119 @@ ROMs carry zeros here, so the field is optional by construction.
 `mks32.py --icon icon.png` embeds one (alpha below 50% becomes the
 colorkey).
 
+### 3.2 Game forms: folder and archive
+
+A game reaches the console in one of two forms, and **a game cannot tell
+which one it is running from**. Both give it the same two things: an
+executable, and a private namespace of named resources it reads through the
+disk API (6.6).
+
+| Form | Is | Suits |
+|---|---|---|
+| Folder | a directory containing `main.s32e` | working on a game, and anything the player adds files to |
+| Archive | one `NAME.s32` file: an uncompressed **tar** of that same directory | shipping a finished game as one file |
+
+**A directory is a game if and only if it contains `main.s32e`.** The name is
+fixed, the way `default.xbe` is on Xbox: the launcher does one stat rather
+than walking the directory, which matters because it rescans the card
+periodically. Everything else in the directory is that game's resources.
+
+`.s32` and `.s32e` are different extensions because they are different kinds
+of object. A `.s32` is a complete, launchable game wherever it sits. A
+`.s32e` is an executable and is never launched on its own; on its own it is a
+component, the way a `.xbe` is outside its disc image. One extension for both
+would make position decide meaning ("a `.s32` at the root is a game, a `.s32`
+in a folder is not"), a rule that cannot be stated in one sentence and breaks
+as soon as a file is moved.
+
+There is no manifest. `main.s32e` carries the same 64-byte header as any
+`.s32`, so title, icon, `game_id`, **`load_mode` (RAM-load or flash-XIP)**,
+`video_mode`, `api_version` and entry point all come from the executable
+itself. A folder has no metadata of its own that could go stale or disagree
+with the code beside it, and a folder-form game chooses its load mode exactly
+as a single-file one does.
+
+Packing is `tar cf game.s32 -C gamedir .` and unpacking is `tar xf`. The
+console requires no tool of ours to produce a playable archive, and a player
+can look inside one with software they already have. `mks32.py` still builds
+the *executable*; it is not needed to package a game.
+
+A card mixing both forms is the expected case:
+
+```
+/
+  chromium.s32          a game, one file (a tar)
+  playground.s32
+  nes/                  a game, as a folder
+    main.s32e             its executable
+    smb.nes               the player's own files, dropped in from a PC
+    metroid.nes
+  doom/
+    main.s32e
+    doom1.wad
+```
+
+The launcher lists all of these together, each showing the title and icon
+from its header.
+
+### 3.3 The archive form is a tar
+
+A `.s32` archive is an ordinary uncompressed tar (USTAR). No compression is
+permitted: a compressed member cannot be executed in place and would have to
+be inflated through RAM the console does not have to spare.
+
+Tar is used because its layout already has the properties this console needs,
+rather than because the format is familiar:
+
+- Each member is preceded by its own 512-byte header and is **contiguous and
+  512-aligned**. The XIP staging path streams `main.s32e` as one unbroken run
+  and never seeks, exactly as it does for a bare `.s32` today.
+- The headers are **inline, before each member**. There is no index at the end
+  of the file to seek backwards for.
+- Members are stored, never compressed, so there is no decompressor and no
+  variant of the format to reject.
+
+There is deliberately **no index member**. An index would have to be written
+by our tooling, which would defeat the point of using a format anyone can
+produce, and it would not pay for itself: an index large enough to matter
+(200 entries is about 8 KB) does not fit the firmware's heap, so the console
+would walk the tar regardless. Walking is cheap for what archives actually
+contain. Locating a member costs one 512-byte header read plus a seek past
+the member's data, so a game with twenty resources resolves a name in single-
+digit milliseconds, once, at launch. The case that would be slow, a library of
+hundreds of files, belongs in the folder form, where listing is a native
+directory read.
+
+`main.s32e` should be the first member so the loader finds it immediately,
+but it is located by name, so an archive whose members are in any order still
+works. A few details follow from how real `tar` behaves, and the loader
+absorbs them rather than requiring the packer to get them right:
+
+- A leading `./` on member names is ignored. `tar cf game.s32 -C dir .`
+  writes `./main.s32e`; `cd dir && tar cf ../game.s32 *` writes
+  `main.s32e`. Both are valid archives.
+- Directory members (typeflag `5`) and any member that is not a regular
+  file (typeflag `0` or `\0`) are skipped. Real tar emits directory
+  entries; they carry no data and are not resources.
+- Members named `PaxHeader/...`, or with typeflag `x`, `g`, `L` or `K`, are
+  metadata some tar implementations emit. They are skipped too.
+
+A `.s32` may therefore be either a tar or the older raw form (a bare header
+followed by its code image). One 512-byte read tells them apart with no
+guessing: the raw form has `"SY32"` at offset 0, and a tar has `"ustar"` at
+offset 257 with a filename at offset 0. The loader accepts both:
+
+```
+read 512 bytes
+  magic "SY32" at 0        -> raw cart: header is right here
+  "ustar" at 257           -> tar: walk to main.s32e, use its header
+  neither                  -> not a game
+```
+
+Both forms end at the same place: a 64-byte header describing one contiguous
+code image, which is what the loader and the XIP staging path already
+consume.
+
 ## 4. Loading model
 
 Two load modes; `mks32.py` picks by linker script, developers choose at
@@ -106,6 +219,13 @@ Link base: `0x10100000`.
 
 In both modes `.data` is copied and `.bss` zeroed by the ROM's own crt0.
 There is no dynamic relocation: the link addresses are part of this ABI.
+
+The load mode is a property of the executable, not of the form the game
+shipped in: `load_mode` is header field 0x1C, and `main.s32e` carries the
+same header as a bare `.s32`. A folder-form game therefore chooses RAM-load
+or flash-XIP exactly as a single-file one does. In every case the loader
+consumes one contiguous code image, whether it reads it from a raw `.s32`,
+from a tar member, or from a file in a folder.
 
 ## 5. Entry, lifetime, frame contract
 
@@ -166,20 +286,33 @@ Semantics notes:
   `present()`, so the ring is refilled as the console drains it.
 - `video_mode` 1 = 320x180 letterbox: the canvas is interpreted as
   320x180 (rows 0..179), displayed centered with 30-row black bars.
-- Disk (api v2): read-only streaming from the game's own data directory,
-  normally `<romname>/` beside the `.s32` file. Plain filenames only, no
-  paths, no dotdot. The directory may instead be bound to the game by
-  `game_id`, so renaming the ROM does not orphan its content: a directory
-  claims a game by containing a file named `.s32id` holding the 8 raw
-  `game_id` bytes. The basename is tried first, so the ordinary layout needs
-  no marker. `.s32id` is invisible to `disk_list` and `disk_open`. A
-  directory whose own name ends in `.s32` is never listed as a game.
-  Up to 4 files open. `disk_read` is synchronous: streaming games read
-  16-32 KB per frame and stay inside frame budget.
-  `disk_list(index)` enumerates the dir from 0 until ENOENT. Errors:
-  EOK 0, ENOENT -1, ENFILE -2, EBADF -3, EIO -4, EINVAL -5. Games that
-  require disk set header api_version=2 (`mks32.py --api 2`); the loader
-  rejects them on v1 firmware, and v1 games run unchanged on v2.
+- Disk (api v2): read-only access to the game's own resource namespace
+  (3.2). The same names work whichever form the game shipped in: against a
+  folder they are paths beneath it, against an archive they are member names
+  in the tar. A game never learns which.
+  Names may contain `/`, so a game can organise its own resources
+  (`roms/smb.nes`), but never `..`, a leading `/`, a drive letter or a
+  backslash: the namespace is a sandbox with no route out of it. `main.s32e`
+  and `.s32id` are the console's own files and are invisible to both
+  `disk_open` and `disk_list`.
+  For a folder-form game the namespace is that folder. A bare `.s32` may
+  also carry a sidecar `<romname>/` beside it, and that directory can be
+  bound by `game_id` instead of by name so renaming the ROM does not orphan
+  its content: a directory claims a game by holding a file named `.s32id`
+  with the 8 raw `game_id` bytes. The basename is tried first, so the
+  ordinary layout needs no marker. Where a sidecar folder and an archive
+  member could both answer a name, **the folder wins**, so an asset can be
+  replaced for testing without repacking.
+  Up to 4 files open. `disk_read` is synchronous and blocks the caller:
+  streaming games read 16-32 KB per frame and stay inside frame budget.
+  `disk_list(index)` enumerates ONE level from 0 until ENOENT. A directory
+  is reported with a trailing `/` and a size of 0, which keeps the call's
+  frozen signature; a game that wants a tree walks it deliberately, because
+  a recursive scan of a large card is not something the console should do
+  behind a game's back.
+  Errors: EOK 0, ENOENT -1, ENFILE -2, EBADF -3, EIO -4, EINVAL -5. Games
+  that require disk set header api_version=2 (`mks32.py --api 2`); the
+  loader rejects them on v1 firmware, and v1 games run unchanged on v2.
   Rationale: streaming beats RAM ceilings — the game region plus an SD
   card gives working sets thousands of times larger than RAM.
 
