@@ -75,8 +75,11 @@ static void api_exit(void) {
 // ---- audio: 48kHz stereo out over HDMI data islands ----
 // The game pushes PCM into this ring; the video scanline builder drains it
 // one 4-frame packet at a time into the horizontal blanking interval.
-#define AUD_RING 640                       // stereo frames = 13ms at 48kHz
-                                           // (the game tops up every 16.7ms)
+// Sized to the largest that still fits firmware RAM. The game bursts ~800
+// frames every 16.7ms while the scanline pump drains at most 4 frames per
+// active line, so this ring is the buffer across the vertical blanking gap
+// where no islands are built.
+#define AUD_RING 704                       // stereo frames = 14.7ms at 48kHz
 static int16_t aud_ring[AUD_RING * 2];
 static volatile uint32_t aud_w, aud_r;
 
