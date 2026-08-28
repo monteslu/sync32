@@ -254,6 +254,23 @@ void dvi_scanline_dma_list_init(struct dvi_scanline_dma_list *dma_list) {
 	*dma_list = (struct dvi_scanline_dma_list){};	
 }
 
+#define VIDEO_PREAMBLE 8
+#define VIDEO_GUARD 2
+#define ISLAND_PREAMBLE_CLK 8
+
+// Video guard band (HDMI 1.4b 5.2.2.1), doubled into a 20-bit word pair like
+// dvi_ctrl_syms. ch0/ch2 use 0x2cc, ch1 uses 0x133.
+static const uint32_t __dvi_const(video_guard_syms)[3] = {
+	0x2cc | (0x2cc << 10),
+	0x133 | (0x133 << 10),
+	0x2cc | (0x2cc << 10),
+};
+// Video preamble: CTL0..CTL3 = 1,0,0,0 -> ch1 carries 0b01, ch2 carries 0b00.
+static const uint32_t __dvi_const(video_preamble_syms)[2] = {
+	0x2acab,   // dvi_ctrl_syms[1], the 0b01 control symbol, doubled
+	0xd5354,   // dvi_ctrl_syms[0], the 0b00 control symbol, doubled
+};
+
 static const uint32_t *get_ctrl_sym(bool vsync, bool hsync) {
 	return &dvi_ctrl_syms[!!vsync << 1 | !!hsync];
 }
@@ -312,28 +329,46 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 	// legal HDMI island and invisible to the sink.
 	int island_words = hdmi_island_words_len();
 	int island_buf = hdmi_island_ready();
-	// The back porch carries: 8 clocks preamble + 36 clocks island + the
-	// remainder. Forgetting the preamble here made every scanline 4 clocks
-	// short (796 of 800), which video tolerates but no sink will lock data
-	// islands onto.
-	int porch_rest = t->h_back_porch - 8 - island_words * DVI_SYMBOLS_PER_WORD;
+	// Island scanline layout, matching the arrangement proven by the
+	// libdvi HDMI-audio forks (shuichitakano's PicoDVI-audio and
+	// rh1tech/frank-hdmi-audio): the island sits at the START of blanking,
+	// and -- crucially -- once the link carries data islands it is in HDMI
+	// mode, so EVERY video period must then be preceded by an 8-clock video
+	// preamble and a 2-clock video guard band (HDMI 1.4b 5.2.2). Omitting
+	// those leaves video working while no sink ever accepts the audio.
+	//
+	//   ch0: [fp][island][sync - island][bp - pre - guard][pre][guard][active]
+	//   ch1/2: [fp - pre_i][pre_i][island][rest][pre][guard][active]
+	const int ISL = island_words * DVI_SYMBOLS_PER_WORD;   /* 36 */
+	const int BLANK = t->h_front_porch + t->h_sync_width + t->h_back_porch;
+	// Derive every remainder from the blanking total so each lane emits
+	// exactly BLANK clocks; computing them piecewise double-counts.
+	int sync_after_island = t->h_sync_width - ISL;
+	int sync_rest = BLANK - t->h_front_porch - ISL - sync_after_island
+	                - VIDEO_PREAMBLE - VIDEO_GUARD;
+	int ns_head = t->h_front_porch - ISLAND_PREAMBLE_CLK;
+	int ns_rest = BLANK - ns_head - ISLAND_PREAMBLE_CLK - ISL
+	              - VIDEO_PREAMBLE - VIDEO_GUARD;
 
 	dma_cb_t *synclist = dvi_lane_from_list(l, TMDS_SYNC_LANE);
-	_set_data_cb(&synclist[0], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off, t->h_front_porch / DVI_SYMBOLS_PER_WORD, 2, false);
-	_set_data_cb(&synclist[1], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_on,  t->h_sync_width  / DVI_SYMBOLS_PER_WORD, 2, false);
 	if (island_words) {
-		// EVERY lane must emit the same number of clocks per scanline or the
-		// three TMDS channels desynchronise (symptom: ch0/ch2 DMA stalls at
-		// the island length while ch1 keeps running, and no sink locks).
-		// The other lanes spend 8 clocks on the island preamble, so the sync
-		// lane spends those 8 clocks on its normal control symbol.
-		_set_data_cb(&synclist[2], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off,
-			8 / DVI_SYMBOLS_PER_WORD, 2, false);
-		_set_data_cb(&synclist[3], &dma_cfg[TMDS_SYNC_LANE],
+		// ch0 carries its sync levels inside the island's TERC4 nibble, so the
+		// island may legally overlap the hsync pulse.
+		_set_data_cb(&synclist[0], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off,
+			t->h_front_porch / DVI_SYMBOLS_PER_WORD, 2, false);
+		_set_data_cb(&synclist[1], &dma_cfg[TMDS_SYNC_LANE],
 			hdmi_island_words(island_buf, 0), island_words, 0, false);
+		_set_data_cb(&synclist[2], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_on,
+			sync_after_island / DVI_SYMBOLS_PER_WORD, 2, false);
+		_set_data_cb(&synclist[3], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off,
+			sync_rest / DVI_SYMBOLS_PER_WORD, 2, false);
 		_set_data_cb(&synclist[4], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off,
-			porch_rest / DVI_SYMBOLS_PER_WORD, 2, true);
+			VIDEO_PREAMBLE / DVI_SYMBOLS_PER_WORD, 2, false);
+		_set_data_cb(&synclist[5], &dma_cfg[TMDS_SYNC_LANE], &video_guard_syms[0],
+			VIDEO_GUARD / DVI_SYMBOLS_PER_WORD, 2, true);
 	} else {
+		_set_data_cb(&synclist[0], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off, t->h_front_porch / DVI_SYMBOLS_PER_WORD, 2, false);
+		_set_data_cb(&synclist[1], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_on,  t->h_sync_width  / DVI_SYMBOLS_PER_WORD, 2, false);
 		_set_data_cb(&synclist[2], &dma_cfg[TMDS_SYNC_LANE], sym_hsync_off, t->h_back_porch  / DVI_SYMBOLS_PER_WORD, 2, true);
 	}
 
@@ -341,20 +376,21 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 		dma_cb_t *cblist = dvi_lane_from_list(l, i);
 		if (i != TMDS_SYNC_LANE) {
 			if (island_words) {
-				// order matters: the DMA walks blocks 0,1,2,... so the
-				// 8-clock data-island preamble must be block 1, immediately
-				// before the island itself (HDMI 1.4b 5.2.1.1).
-				static const uint32_t preamble_sym = 0x2acab;   // CTL 0b01, doubled
-				// full front porch + sync; the preamble comes out of the
-				// BACK porch (which is where the island lives), not here
 				_set_data_cb(&cblist[0], &dma_cfg[i], sym_no_sync,
-					(t->h_front_porch + t->h_sync_width) / DVI_SYMBOLS_PER_WORD, 2, false);
-				_set_data_cb(&cblist[1], &dma_cfg[i], &preamble_sym,
-					8 / DVI_SYMBOLS_PER_WORD, 0, false);
+					ns_head / DVI_SYMBOLS_PER_WORD, 2, false);
+				// data-island preamble: CTL0=1,CTL2=1 -> 0b01 on BOTH ch1 and ch2
+				static const uint32_t island_preamble_sym = 0x2acab;
+				_set_data_cb(&cblist[1], &dma_cfg[i], &island_preamble_sym,
+					ISLAND_PREAMBLE_CLK / DVI_SYMBOLS_PER_WORD, 0, false);
 				_set_data_cb(&cblist[2], &dma_cfg[i],
 					hdmi_island_words(island_buf, i), island_words, 0, false);
 				_set_data_cb(&cblist[3], &dma_cfg[i], sym_no_sync,
-					porch_rest / DVI_SYMBOLS_PER_WORD, 2, false);
+					ns_rest / DVI_SYMBOLS_PER_WORD, 2, false);
+				// video preamble: CTL0=1 -> ch1 sends 0b01, ch2 sends 0b00
+				_set_data_cb(&cblist[4], &dma_cfg[i], &video_preamble_syms[i == 1 ? 0 : 1],
+					VIDEO_PREAMBLE / DVI_SYMBOLS_PER_WORD, 0, false);
+				_set_data_cb(&cblist[5], &dma_cfg[i], &video_guard_syms[i],
+					VIDEO_GUARD / DVI_SYMBOLS_PER_WORD, 2, false);
 			} else {
 				_set_data_cb(&cblist[0], &dma_cfg[i], sym_no_sync,
 					(t->h_front_porch + t->h_sync_width + t->h_back_porch) / DVI_SYMBOLS_PER_WORD, 2, false);
@@ -366,8 +402,8 @@ void dvi_setup_scanline_for_active(const struct dvi_timing *t, const struct dvi_
 		// unconditionally left the intervening control blocks uninitialised
 		// and the DMA chain walked into garbage (black screen, dead boot).
 		int target_block = (i == TMDS_SYNC_LANE)
-			? (island_words ? 5 : 3)
-			: (island_words ? 4 : 1);
+			? (island_words ? 6 : 3)
+			: (island_words ? 6 : 1);
 		// blocks past the active one are never reached by the chain, but the
 		// ones BEFORE it must all be valid: with no island the extra chunks
 		// would otherwise hold stale/zero descriptors and stall the lane
@@ -395,10 +431,10 @@ void __dvi_func(dvi_update_scanline_data_dma)(const struct dvi_timing *t, const 
 		const uint32_t *lane_tmdsbuf = tmdsbuf + i * t->h_active_pixels / DVI_SYMBOLS_PER_WORD;
 #endif
 		// indices account for the always-present island block
-		dvi_lane_from_list(l, i)[i == TMDS_SYNC_LANE ? 5 : 4].read_addr = lane_tmdsbuf;
+		dvi_lane_from_list(l, i)[6].read_addr = lane_tmdsbuf;
 		// point the island block at whichever buffer the audio pump filled
 		int ib = hdmi_island_ready();
-		dvi_lane_from_list(l, i)[i == TMDS_SYNC_LANE ? 3 : 2].read_addr =
+		dvi_lane_from_list(l, i)[i == TMDS_SYNC_LANE ? 1 : 2].read_addr =
 			hdmi_island_words(ib, i);
 	}
 	hdmi_island_consume();

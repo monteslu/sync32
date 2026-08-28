@@ -76,6 +76,14 @@ static void __not_in_flash_func(core1_scanout)(void) {
         tmds_encode_data_channel_16bpp(pix, tmdsbuf + 2 * words_per_channel, pixwidth / 2, DVI_16BPP_RED_MSB,   DVI_16BPP_RED_LSB  );
         queue_add_blocking_u32(&dvi0.q_tmds_valid, &tmdsbuf);
         s32_scanline = y;
+        // The island sits in the BACK PORCH, after the hsync pulse, and the
+        // control symbols on either side of it are get_ctrl_sym(vsync,
+        // !h_sync_polarity). 640x480p60 is negative-sync, so the idle level
+        // there is hsync=1, vsync=1. The island's ch0 nibble must carry the
+        // SAME levels or the sync signal inverts for 44 clocks of every
+        // scanline and no sink will lock onto the islands.
+        #define S32_ISLAND_HSYNC (!DVI_TIMING.h_sync_polarity)
+        #define S32_ISLAND_VSYNC (!DVI_TIMING.v_sync_polarity)
         // HDMI audio: build one data island per scanline while the game is
         // pushing samples. 48kHz over 31500 lines/s needs 1.52 frames per
         // line, so a 4-frame packet every ~3 lines keeps the sink fed.
@@ -101,7 +109,7 @@ static void __not_in_flash_func(core1_scanout)(void) {
                 else if (slot == 4)         hdmi_pkt_audio_infoframe(&pkt);
                 else                        hdmi_pkt_acr(&pkt, 6144, 25200);
                 ctl_ctr++;
-                hdmi_island_build(&pkt, false, false);
+                hdmi_island_build(&pkt, S32_ISLAND_HSYNC, S32_ISLAND_VSYNC);
             } else {
                 int16_t pcm[8];
                 extern int s32_audio_take(int16_t *out, int max_frames);
@@ -110,7 +118,7 @@ static void __not_in_flash_func(core1_scanout)(void) {
                     ctl_ctr++;
                     hdmi_pkt_audio(&pkt, pcm, n, aud_block_start, 0);
                     aud_block_start = false;
-                    hdmi_island_build(&pkt, false, false);
+                    hdmi_island_build(&pkt, S32_ISLAND_HSYNC, S32_ISLAND_VSYNC);
                 }
             }
         }

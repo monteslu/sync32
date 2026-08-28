@@ -52,9 +52,13 @@ static_assert(__builtin_offsetof(dma_cb_t, c.ctrl) == __builtin_offsetof(dma_cha
 // interval (preamble+guard, then the 32-symbol packet). Islands are only
 // scheduled when audio is running; otherwise these chunks extend the
 // existing control-symbol runs and the output is bit-identical to DVI.
-#define DVI_ISLAND_CHUNKS 2
-#define DVI_SYNC_LANE_CHUNKS (DVI_STATE_COUNT + DVI_ISLAND_CHUNKS + 2)
-#define DVI_NOSYNC_LANE_CHUNKS (2 + DVI_ISLAND_CHUNKS + 1)
+// An island scanline needs 7 blocks on every lane:
+//   ch0:   fp, island, sync-rest, bp-rest, video preamble, video guard, active
+//   ch1/2: fp-pre, island preamble, island, rest, video preamble, guard, active
+// A non-island scanline uses fewer; the array is sized for the larger case.
+#define DVI_ISLAND_LANE_CHUNKS 7
+#define DVI_SYNC_LANE_CHUNKS   DVI_ISLAND_LANE_CHUNKS
+#define DVI_NOSYNC_LANE_CHUNKS DVI_ISLAND_LANE_CHUNKS
 
 struct dvi_scanline_dma_list {
 	dma_cb_t l0[DVI_SYNC_LANE_CHUNKS];

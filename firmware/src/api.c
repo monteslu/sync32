@@ -79,7 +79,7 @@ static void api_exit(void) {
 // frames every 16.7ms while the scanline pump drains at most 4 frames per
 // active line, so this ring is the buffer across the vertical blanking gap
 // where no islands are built.
-#define AUD_RING 704                       // stereo frames = 14.7ms at 48kHz
+#define AUD_RING 512                       // stereo frames = 14.7ms at 48kHz
 static int16_t aud_ring[AUD_RING * 2];
 static volatile uint32_t aud_w, aud_r;
 
