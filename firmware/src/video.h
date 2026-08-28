@@ -15,4 +15,5 @@ void video_canvas_mark(int y0, int y1);
 void video_present(void);              // render list into fb, wait next vblank
 uint32_t video_frame_count(void);
 extern uint8_t s32_framebuf[320 * 240];
+extern volatile uint32_t s32_scanline;
 #endif

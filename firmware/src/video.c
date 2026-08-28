@@ -15,6 +15,7 @@
 #define DVI_TIMING dvi_timing_640x480p_60hz
 
 uint8_t s32_framebuf[320 * 240];
+volatile uint32_t s32_scanline;   // row core1 is currently encoding
 static uint16_t cur_palette[256];
 
 // sheets: one 64KB arena
@@ -67,6 +68,7 @@ static void __not_in_flash_func(core1_scanout)(void) {
         tmds_encode_data_channel_16bpp(pix, tmdsbuf + 1 * words_per_channel, pixwidth / 2, DVI_16BPP_GREEN_MSB, DVI_16BPP_GREEN_LSB);
         tmds_encode_data_channel_16bpp(pix, tmdsbuf + 2 * words_per_channel, pixwidth / 2, DVI_16BPP_RED_MSB,   DVI_16BPP_RED_LSB  );
         queue_add_blocking_u32(&dvi0.q_tmds_valid, &tmdsbuf);
+        s32_scanline = y;
         if (++y == 240) { y = 0; vframe++; }
     }
 }
@@ -194,8 +196,17 @@ void s32_usb_task(void);
 void video_present(void) {
     s32_usb_task();
     render_list();
+    // Single-buffered console: scanout reads the same canvas the game draws
+    // into, so a frame that takes longer than one scanout period shows torn
+    // bands (thin geometry can vanish inside them). Full double buffering
+    // needs 75KB the ABI has already promised elsewhere, so instead present()
+    // releases the game exactly at the START of the visible frame: drawing
+    // then races the beam DOWN the screen from row 0 rather than starting at
+    // an arbitrary row, which is the classic single-buffer discipline and
+    // keeps a whole frame of drawing time ahead of the beam.
     uint32_t f = vframe;
-    while (vframe == f) tight_loop_contents();
+    while (vframe == f) tight_loop_contents();     // wait for frame boundary
+    while (s32_scanline > 4) tight_loop_contents();// and for the beam to be at the top
     s32_note_present();
 }
 
