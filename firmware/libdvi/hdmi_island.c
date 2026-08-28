@@ -31,7 +31,14 @@ typedef struct {
     uint32_t word[3][ISLAND_WORDS];
 } island_buf_t;
 
-static island_buf_t island_bufs[2];
+// [0] and [1] alternate for real packets; [2] holds a NULL packet forever.
+// When no fresh island is queued the DMA must be pointed at the NULL buffer:
+// re-sending the previous buffer retransmits that AUDIO SAMPLE packet, so the
+// sink receives the same four PCM frames several times over. The pump builds
+// ~10k islands/s while the DMA consumes one per active line (28.8k/s), so
+// two of every three islands were duplicates of real audio.
+#define ISLAND_NULL_BUF 2
+static island_buf_t island_bufs[3];
 static volatile int island_fill;        // buffer being filled
 static volatile bool island_armed;      // audio running?
 
@@ -41,6 +48,7 @@ static inline uint32_t ctrl_single(bool vsync, bool hsync) {
     return dvi_ctrl_syms[(!!vsync << 1) | !!hsync] & 0x3ff;
 }
 
+static int island_build_into(int b, const hdmi_packet_t *pkt, bool hsync_active, bool vsync);
 void hdmi_island_arm(bool on) { island_armed = on; }
 bool hdmi_island_is_armed(void) { return island_armed; }
 
@@ -59,17 +67,19 @@ void hdmi_island_init(void) {
     memset(&null_pkt, 0, sizeof null_pkt);
     hdmi_island_build(&null_pkt, false, false);
     hdmi_island_build(&null_pkt, false, false);
+    // permanent NULL island, sent on every line with no fresh packet
+    island_build_into(ISLAND_NULL_BUF, &null_pkt, false, false);
     island_ready = -1;
 }
 
 int hdmi_island_ready(void) {
-    return island_ready < 0 ? island_fill : island_ready;
+    return island_ready < 0 ? ISLAND_NULL_BUF : island_ready;
 }
 void hdmi_island_consume(void) { island_ready = -1; }
 
 // Fill the next island buffer with one packet. Returns the buffer index.
-int hdmi_island_build(const hdmi_packet_t *pkt, bool hsync_active, bool vsync) {
-    int b = island_fill ^ 1;
+static int island_build_into(int b, const hdmi_packet_t *pkt,
+                             bool hsync_active, bool vsync) {
     island_buf_t *ib = &island_bufs[b];
     uint32_t pkt_syms[3][32];
     hdmi_encode_island(pkt, hsync_active, vsync, true, pkt_syms);
@@ -94,6 +104,12 @@ int hdmi_island_build(const hdmi_packet_t *pkt, bool hsync_active, bool vsync) {
         for (int w = 0; w < ISLAND_WORDS; w++)
             ib->word[ch][w] = lane[w * 2] | (lane[w * 2 + 1] << 10);
     }
+    return b;
+}
+
+int hdmi_island_build(const hdmi_packet_t *pkt, bool hsync_active, bool vsync) {
+    int b = island_fill ^ 1;               // alternate 0 / 1
+    island_build_into(b, pkt, hsync_active, vsync);
     island_fill = b;
     island_ready = b;
     return b;
