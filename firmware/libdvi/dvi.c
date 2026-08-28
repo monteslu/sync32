@@ -177,13 +177,6 @@ static void __dvi_func(dvi_dma_irq_handler)(struct dvi_inst *inst) {
 	// now have until the end of this region to generate DMA blocklist for next
 	// scanline.
 	dvi_timing_state_advance(inst->timing, &inst->timing_state);
-	// Build the next HDMI data island here rather than in the scanout loop:
-	// this hook fires on every scanline, so islands (and the InfoFrame/ACR
-	// control packets) keep flowing through vertical blanking too.
-	{
-		void s32_hdmi_island_pump(void);
-		s32_hdmi_island_pump();
-	}
 	if (inst->tmds_buf_release && !queue_try_add_u32(&inst->q_tmds_free, &inst->tmds_buf_release))
 		panic("TMDS free queue full in IRQ!");
 	inst->tmds_buf_release = inst->tmds_buf_release_next;
