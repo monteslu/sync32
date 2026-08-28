@@ -251,8 +251,9 @@ void launcher_run(void) {
             uint32_t size;
             printf("loading %s...\n", roms[sel].name);
             if (roms[sel].xip) {
-                void s32_disk_set_dir(const char *rom_filename);
-                s32_disk_set_dir(roms[sel].name);
+                void s32_disk_set_dir_id(const char *rom_filename,
+                                         const uint8_t game_id[8]);
+                s32_disk_set_dir_id(roms[sel].name, roms[sel].game_id);
                 sd_set_game_id(roms[sel].game_id);
                 int s32_xip_stage_and_launch(const char *filename);
                 int xr = s32_xip_stage_and_launch(roms[sel].name);
@@ -262,8 +263,9 @@ void launcher_run(void) {
             if (sd_read_rom(roms[sel].name, ROM_BUF, ROM_BUF_MAX, &size) == 0) {
                 const s32_header_t *h = (const s32_header_t *)ROM_BUF;
                 sd_set_game_id(h->game_id);
-                void s32_disk_set_dir(const char *rom_filename);
-                s32_disk_set_dir(roms[sel].name);
+                void s32_disk_set_dir_id(const char *rom_filename,
+                                         const uint8_t game_id[8]);
+                s32_disk_set_dir_id(roms[sel].name, roms[sel].game_id);
                 int r = s32_launch(ROM_BUF, size);  // no return on success
                 printf("launch failed: %d\n", r);
             } else printf("read failed\n");

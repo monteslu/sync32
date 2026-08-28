@@ -57,8 +57,8 @@ void s32_xip_boot_check(void) {
     watchdog_hw->scratch[1] = 0;
     if (meta->magic != META_MAGIC) return;
     if (s32_crc32((const void *)SLOT_XIP_ADDR, meta->code_size) != meta->code_crc32) return;
-    void s32_disk_set_dir(const char *rom_filename);
-    s32_disk_set_dir((const char *)meta->filename);
+    void s32_disk_set_dir_id(const char *rom_filename, const uint8_t game_id[8]);
+    s32_disk_set_dir_id((const char *)meta->filename, (const uint8_t *)meta->game_id);
     sd_set_game_id((const uint8_t *)meta->game_id);
     s32_video_mode = meta->video_mode == 1 ? 1 : 0;
     printf("xip: booting staged slot entry=%08lx\n",

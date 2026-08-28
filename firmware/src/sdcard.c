@@ -35,6 +35,7 @@ int sd_list_roms(rom_entry_t *out, int max) {
     while (n < max && f_readdir(&dir, &fi) == FR_OK && fi.fname[0]) {
         printf("scan: entry '%s' attr=%02x size=%lu\n", fi.fname,
                fi.fattrib, (unsigned long)fi.fsize);
+        if (fi.fattrib & AM_DIR) continue;   // a dir named *.s32 is not a ROM
         int len = strlen(fi.fname);
         if (len < 5 || strcasecmp(fi.fname + len - 4, ".s32")) continue;
         strncpy(out[n].name, fi.fname, sizeof out[n].name - 1);
