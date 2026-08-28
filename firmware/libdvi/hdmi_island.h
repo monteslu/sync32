@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "hdmi_audio.h"
+void hdmi_island_init(void);
 void hdmi_island_arm(bool on);
 bool hdmi_island_is_armed(void);
 bool hdmi_island_pending(void);

@@ -141,6 +141,7 @@ void video_init(void) {
     dvi0.timing = &DVI_TIMING;
     dvi0.ser_cfg = DVI_DEFAULT_SERIAL_CONFIG;
     VSTAGE(4);
+    hdmi_island_init();      // prime island buffers BEFORE the DVI IRQs run
     dvi_init(&dvi0, next_striped_spin_lock_num(), next_striped_spin_lock_num());
     void *tb;
     tb = tmds_buf_a; queue_add_blocking_u32(&dvi0.q_tmds_free, (uint32_t *)&tb);

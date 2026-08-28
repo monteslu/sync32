@@ -79,7 +79,14 @@ static void api_exit(void) {
 // frames every 16.7ms while the scanline pump drains at most 4 frames per
 // active line, so this ring is the buffer across the vertical blanking gap
 // where no islands are built.
-#define AUD_RING 512                       // stereo frames = 14.7ms at 48kHz
+// Single-producer / single-consumer: the game owns aud_w, the scanline pump
+// owns aud_r, and neither writes the other's pointer -- so no lock is needed
+// even when the consumer runs from an interrupt. Two rules make that hold:
+// the size is a power of two so the wrap is a mask rather than a division
+// (a 32-bit divide in the DVI IRQ is far too slow), and each side publishes
+// its pointer only AFTER the data it refers to is in memory.
+#define AUD_RING 512                       // stereo frames, power of two
+#define AUD_MASK (AUD_RING - 1)
 static int16_t aud_ring[AUD_RING * 2];
 static volatile uint32_t aud_w, aud_r;
 
@@ -89,28 +96,32 @@ static int api_audio_space(void) {
 }
 static void api_audio_push(const int16_t *lr, int frames) {
     if (frames <= 0) return;
-    uint32_t space = AUD_RING - (aud_w - aud_r);
+    uint32_t w = aud_w;
+    uint32_t space = AUD_RING - (w - aud_r);
     if ((uint32_t)frames > space) frames = (int)space;
     for (int i = 0; i < frames; i++) {
-        uint32_t s = (aud_w + i) % AUD_RING;
+        uint32_t s = (w + i) & AUD_MASK;
         aud_ring[s * 2] = lr[i * 2];
         aud_ring[s * 2 + 1] = lr[i * 2 + 1];
     }
-    aud_w += frames;
+    __asm volatile ("dmb" ::: "memory");   // samples land before the pointer moves
+    aud_w = w + frames;
     hdmi_island_arm(true);                 // audio is live: schedule islands
 }
 
-// Called from the scanline builder: pull up to 4 frames for one packet.
+// Called from the scanline pump (which may be an IRQ): pull up to max_frames.
 // Returns the number of frames written to out (0 = ring empty).
 int s32_audio_take(int16_t *out, int max_frames) {
-    uint32_t avail = aud_w - aud_r;
+    uint32_t r = aud_r;
+    uint32_t avail = aud_w - r;
     int n = (int)(avail < (uint32_t)max_frames ? avail : (uint32_t)max_frames);
     for (int i = 0; i < n; i++) {
-        uint32_t s = (aud_r + i) % AUD_RING;
+        uint32_t s = (r + i) & AUD_MASK;
         out[i * 2] = aud_ring[s * 2];
         out[i * 2 + 1] = aud_ring[s * 2 + 1];
     }
-    aud_r += n;
+    __asm volatile ("dmb" ::: "memory");   // reads complete before freeing space
+    aud_r = r + n;
     return n;
 }
 

@@ -49,15 +49,20 @@ bool hdmi_island_is_armed(void) { return island_armed; }
 static volatile int island_ready = -1;
 static bool island_inited;
 bool hdmi_island_pending(void) { return island_armed && island_ready >= 0; }
+// Prime both buffers with NULL packets. Must be called once during video
+// init, NOT lazily from hdmi_island_ready(): that runs inside the DVI DMA
+// IRQ, and building there races the pump for island_fill/island_ready.
+void hdmi_island_init(void) {
+    if (island_inited) return;
+    island_inited = true;
+    hdmi_packet_t null_pkt;
+    memset(&null_pkt, 0, sizeof null_pkt);
+    hdmi_island_build(&null_pkt, false, false);
+    hdmi_island_build(&null_pkt, false, false);
+    island_ready = -1;
+}
+
 int hdmi_island_ready(void) {
-    if (!island_inited) {          // both buffers start as NULL packets so
-        island_inited = true;      // the always-present block is always legal
-        hdmi_packet_t null_pkt;
-        memset(&null_pkt, 0, sizeof null_pkt);
-        hdmi_island_build(&null_pkt, false, false);
-        hdmi_island_build(&null_pkt, false, false);
-        island_ready = -1;
-    }
     return island_ready < 0 ? island_fill : island_ready;
 }
 void hdmi_island_consume(void) { island_ready = -1; }
