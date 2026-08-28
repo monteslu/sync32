@@ -71,8 +71,9 @@ int s32_xip_stage_and_launch(const char *filename) {
     const s32_header_t *h = (const s32_header_t *)hdr;
     if (h->magic != S32_MAGIC || h->load_mode != S32_LOAD_XIP) { f_close(&f); return -4; }
     s32_video_mode = h->video_mode == 1 ? 1 : 0;
-    // v1 XIP contract: payload is exactly the code image
-    if (h->code_offset != 64 || h->rom_size != 64 + h->code_size ||
+    // XIP contract: the code image starts at 64; trailing sections after it
+    // (e.g. the optional 16x16 launcher icon) are allowed and ignored here
+    if (h->code_offset != 64 || h->rom_size < 64 + h->code_size ||
         h->code_size > SLOT_MAX) { f_close(&f); return -5; }
 
     if (meta->magic == META_MAGIC && meta->crc32 == h->crc32 &&
