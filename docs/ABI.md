@@ -167,9 +167,15 @@ Semantics notes:
 - `video_mode` 1 = 320x180 letterbox: the canvas is interpreted as
   320x180 (rows 0..179), displayed centered with 30-row black bars.
 - Disk (api v2): read-only streaming from the game's own data directory,
-  `<romname>/` beside the `.s32` file. Plain filenames only — no paths,
-  no dotdot. Up to 4 files open. `disk_read` is synchronous: streaming
-  games read 16-32 KB per frame and stay inside frame budget.
+  normally `<romname>/` beside the `.s32` file. Plain filenames only, no
+  paths, no dotdot. The directory may instead be bound to the game by
+  `game_id`, so renaming the ROM does not orphan its content: a directory
+  claims a game by containing a file named `.s32id` holding the 8 raw
+  `game_id` bytes. The basename is tried first, so the ordinary layout needs
+  no marker. `.s32id` is invisible to `disk_list` and `disk_open`. A
+  directory whose own name ends in `.s32` is never listed as a game.
+  Up to 4 files open. `disk_read` is synchronous: streaming games read
+  16-32 KB per frame and stay inside frame budget.
   `disk_list(index)` enumerates the dir from 0 until ENOENT. Errors:
   EOK 0, ENOENT -1, ENFILE -2, EBADF -3, EIO -4, EINVAL -5. Games that
   require disk set header api_version=2 (`mks32.py --api 2`); the loader
