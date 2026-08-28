@@ -9,6 +9,7 @@
 #include "log.h"
 
 extern volatile s32_pad_t s32_pads[4];
+void s32_check_exit_combo(uint16_t buttons);
 
 static bool host_active;
 static uint32_t last_mount_ms;          // for the launcher's idle re-probe
@@ -69,6 +70,11 @@ void tuh_xinput_report_received_cb(uint8_t dev_addr, uint8_t instance,
     int i = slot_find(dev_addr, instance);
     if (i >= 0 && itf->connected && itf->new_pad_data) {
         s32_pads[i].buttons = itf->pad.wButtons;
+        // SYSTEM-LEVEL EXIT: SELECT+START held for ~1s returns to the
+        // launcher no matter what the game is doing. This lives in the
+        // console's input path, not in game code, so it still works when a
+        // game hangs, ignores input, or never polls the pad at all.
+        s32_check_exit_combo(s32_pads[i].buttons);
         s32_pads[i].lx = (int8_t)(itf->pad.sThumbLX >> 8);
         s32_pads[i].ly = (int8_t)(itf->pad.sThumbLY >> 8);
     }

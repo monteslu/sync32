@@ -24,11 +24,17 @@
 
 extern volatile uint8_t s32_video_mode;
 typedef struct {
-    uint32_t magic, crc32, code_size, entry_offset;
+    uint32_t magic;
+    uint32_t crc32;         // the ROM header's crc32 (payload: code + any
+                            // trailing sections) - identifies the cart file
+    uint32_t code_size, entry_offset;
     char filename[40];                  // for the game's disk dir + saves
     uint8_t game_id[8];
     uint8_t video_mode;
     uint8_t pad_[3];
+    uint32_t code_crc32;    // crc of the staged CODE image alone - this is
+                            // what the slot contents can actually be checked
+                            // against (a cart with an icon has crc32 != this)
 } xip_meta_t;
 
 extern volatile bool s32_long_op;
@@ -50,7 +56,7 @@ void s32_xip_boot_check(void) {
     if (watchdog_hw->scratch[1] != BOOT_SLOT_FLAG) return;
     watchdog_hw->scratch[1] = 0;
     if (meta->magic != META_MAGIC) return;
-    if (s32_crc32((const void *)SLOT_XIP_ADDR, meta->code_size) != meta->crc32) return;
+    if (s32_crc32((const void *)SLOT_XIP_ADDR, meta->code_size) != meta->code_crc32) return;
     void s32_disk_set_dir(const char *rom_filename);
     s32_disk_set_dir((const char *)meta->filename);
     sd_set_game_id((const uint8_t *)meta->game_id);
@@ -122,7 +128,8 @@ int s32_xip_stage_and_launch(const char *filename) {
         rc = -7;
 
     if (rc == 0) {
-        xip_meta_t m = { META_MAGIC, crc_want, code_size, entry_offset, {0}, {0}, 0, {0} };
+        xip_meta_t m = { META_MAGIC, crc_want, code_size, entry_offset,
+                         {0}, {0}, 0, {0}, crc_code };
         strncpy(m.filename, filename, sizeof m.filename - 1);
         memcpy(m.game_id, hdr + 48, 8);
         m.video_mode = hdr[29];

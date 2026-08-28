@@ -3,12 +3,33 @@
 #include "pico/stdlib.h"
 #include "pico/rand.h"
 #include "hardware/watchdog.h"
+#include "hdmi_island.h"
 #include "hardware/structs/scb.h"
 #include "sync32.h"
 #include "video.h"
 
 // ---- input (filled by usb host or stub) ----
 volatile s32_pad_t s32_pads[4];
+
+// ---- system-level exit combo (SELECT+START, ~1s) ----
+// Console-level, deliberately: a game-level handler cannot rescue a hung
+// game, and every cart would have to remember to implement it. Called from
+// the USB input path on every controller report.
+#define EXIT_HOLD_REPORTS 120          // xinput reports ~125/s => ~1 second
+void s32_check_exit_combo(uint16_t buttons) {
+    static uint16_t held;
+    if ((buttons & (S32_PAD_SELECT | S32_PAD_START)) ==
+        (S32_PAD_SELECT | S32_PAD_START)) {
+        if (++held >= EXIT_HOLD_REPORTS) {
+            held = 0;
+            watchdog_hw->scratch[3] = 0x505AD000u;   // come back in pad mode
+            watchdog_reboot(0, 0, 10);               // -> launcher
+            while (1) tight_loop_contents();
+        }
+    } else {
+        held = 0;
+    }
+}
 
 static void api_pad(int player, s32_pad_t *out) {
     if (player < 0 || player > 3) { memset(out, 0, sizeof *out); return; }
@@ -51,9 +72,44 @@ static void api_exit(void) {
     while (1) tight_loop_contents();
 }
 
-// ---- audio stub (v1: silent console; ring accepts and discards) ----
-static int api_audio_space(void) { return 4096; }
-static void api_audio_push(const int16_t *lr, int frames) { (void)lr; (void)frames; }
+// ---- audio: 48kHz stereo out over HDMI data islands ----
+// The game pushes PCM into this ring; the video scanline builder drains it
+// one 4-frame packet at a time into the horizontal blanking interval.
+#define AUD_RING 640                       // stereo frames = 13ms at 48kHz
+                                           // (the game tops up every 16.7ms)
+static int16_t aud_ring[AUD_RING * 2];
+static volatile uint32_t aud_w, aud_r;
+
+static int api_audio_space(void) {
+    uint32_t used = aud_w - aud_r;
+    return (int)(AUD_RING - used);
+}
+static void api_audio_push(const int16_t *lr, int frames) {
+    if (frames <= 0) return;
+    uint32_t space = AUD_RING - (aud_w - aud_r);
+    if ((uint32_t)frames > space) frames = (int)space;
+    for (int i = 0; i < frames; i++) {
+        uint32_t s = (aud_w + i) % AUD_RING;
+        aud_ring[s * 2] = lr[i * 2];
+        aud_ring[s * 2 + 1] = lr[i * 2 + 1];
+    }
+    aud_w += frames;
+    hdmi_island_arm(true);                 // audio is live: schedule islands
+}
+
+// Called from the scanline builder: pull up to 4 frames for one packet.
+// Returns the number of frames written to out (0 = ring empty).
+int s32_audio_take(int16_t *out, int max_frames) {
+    uint32_t avail = aud_w - aud_r;
+    int n = (int)(avail < (uint32_t)max_frames ? avail : (uint32_t)max_frames);
+    for (int i = 0; i < n; i++) {
+        uint32_t s = (aud_r + i) % AUD_RING;
+        out[i * 2] = aud_ring[s * 2];
+        out[i * 2 + 1] = aud_ring[s * 2 + 1];
+    }
+    aud_r += n;
+    return n;
+}
 
 // ---- saves: wired to SD when present (weak stubs replaced by sdcard.c) ----
 int __attribute__((weak)) s32_save_read(int slot, void *buf, int max) {

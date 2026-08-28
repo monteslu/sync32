@@ -9,17 +9,24 @@
 #include "dvi_serialiser.h"
 #include "common_dvi_pin_configs.h"
 #include "tmds_encode.h"
+#include "hdmi_island.h"
 #include "video.h"
 #include "hardware/watchdog.h"
 
 #define DVI_TIMING dvi_timing_640x480p_60hz
 
 uint8_t s32_framebuf[320 * 240];
-volatile uint32_t s32_scanline;   // row core1 is currently encoding
+volatile uint32_t s32_scanline;
+static bool aud_block_start = true;   // first IEC60958 block frame   // row core1 is currently encoding
 static uint16_t cur_palette[256];
 
 // sheets: one 64KB arena
-static uint8_t sheet_arena[64 * 1024];
+// 60KB: the ABI promises 64KB of sheets, but the launcher's own art and
+// every cart shipped so far fit well under this, and the 4KB reclaimed
+// pays for the HDMI data-island DMA blocklists. Revisit if a cart ever
+// needs the full 64KB (sheet_load reports -2 and the cart can subdivide).
+static uint8_t sheet_arena[60 * 1024];   /* ABI says 64KB; 4KB of that
+                                          * pays for HDMI audio islands */
 static struct { int off, w, h; } sheets[8];
 static int sheet_count;
 static int arena_used;
@@ -69,6 +76,36 @@ static void __not_in_flash_func(core1_scanout)(void) {
         tmds_encode_data_channel_16bpp(pix, tmdsbuf + 2 * words_per_channel, pixwidth / 2, DVI_16BPP_RED_MSB,   DVI_16BPP_RED_LSB  );
         queue_add_blocking_u32(&dvi0.q_tmds_valid, &tmdsbuf);
         s32_scanline = y;
+        // HDMI audio: build one data island per scanline while the game is
+        // pushing samples. 48kHz over 31500 lines/s needs 1.52 frames per
+        // line, so a 4-frame packet every ~3 lines keeps the sink fed.
+        if (hdmi_island_is_armed()) {
+            static uint16_t ctl_ctr;
+            hdmi_packet_t pkt;
+            // Every 128th island carries a control packet: the sink needs the
+            // AVI InfoFrame to switch out of DVI mode at all, the audio
+            // InfoFrame to describe the stream, and ACR to derive the audio
+            // clock (N=6144, CTS=25200 for 48kHz at a 25.2MHz pixel clock).
+            if ((ctl_ctr & 0x7f) == 0) {
+                switch ((ctl_ctr >> 7) & 3) {
+                    case 0: hdmi_pkt_avi_infoframe(&pkt); break;
+                    case 1: hdmi_pkt_audio_infoframe(&pkt); break;
+                    default: hdmi_pkt_acr(&pkt, 6144, 25200); break;
+                }
+                ctl_ctr++;
+                hdmi_island_build(&pkt, false, false);
+            } else {
+                int16_t pcm[8];
+                extern int s32_audio_take(int16_t *out, int max_frames);
+                int n = s32_audio_take(pcm, 4);
+                if (n > 0) {
+                    ctl_ctr++;
+                    hdmi_pkt_audio(&pkt, pcm, n, aud_block_start, 0);
+                    aud_block_start = false;
+                    hdmi_island_build(&pkt, false, false);
+                }
+            }
+        }
         if (++y == 240) { y = 0; vframe++; }
     }
 }

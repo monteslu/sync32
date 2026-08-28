@@ -34,7 +34,7 @@ console.
 | Resource | Guarantee |
 |---|---|
 | CPU | at least 2.5 million CPU cycles per 60 Hz frame (150 MHz-equivalent), Cortex-M33 with FPU/DSP. The system clock is a board-config detail; games pace by vsync, never wall-clock |
-| Game RAM | 304 KB contiguous at 0x20030000, zero-initialized, exclusively the game's, plus a 16 KB stack above it |
+| Game RAM | 229 KB contiguous at 0x20030000, zero-initialized, exclusively the game's, plus a 16 KB stack above it. The 75 KB above it (0x20069400..0x2007C000) is the console's second scanout buffer, which is what makes present() tear-free. |
 | Video | 320x240 (mode 0, 4:3) or 320x180 letterbox (mode 1, 16:9), 60 Hz, square pixels |
 | Color | 8bpp indexed sprites through a 256-entry RGB565 palette; solid ops in raw RGB565 |
 | Sprites | display-list compositing, up to 128 sprite ops per frame, arbitrary WxH source rects, color-key index 0 |

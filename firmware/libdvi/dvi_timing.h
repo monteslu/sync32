@@ -48,8 +48,13 @@ typedef struct dma_cb {
 static_assert(sizeof(dma_cb_t) == 4 * sizeof(uint32_t), "bad dma layout");
 static_assert(__builtin_offsetof(dma_cb_t, c.ctrl) == __builtin_offsetof(dma_channel_hw_t, ctrl_trig), "bad dma layout");
 
-#define DVI_SYNC_LANE_CHUNKS DVI_STATE_COUNT
-#define DVI_NOSYNC_LANE_CHUNKS 2
+// +2 chunks per lane for an HDMI data island in the horizontal blanking
+// interval (preamble+guard, then the 32-symbol packet). Islands are only
+// scheduled when audio is running; otherwise these chunks extend the
+// existing control-symbol runs and the output is bit-identical to DVI.
+#define DVI_ISLAND_CHUNKS 2
+#define DVI_SYNC_LANE_CHUNKS (DVI_STATE_COUNT + DVI_ISLAND_CHUNKS)
+#define DVI_NOSYNC_LANE_CHUNKS (2 + DVI_ISLAND_CHUNKS)
 
 struct dvi_scanline_dma_list {
 	dma_cb_t l0[DVI_SYNC_LANE_CHUNKS];

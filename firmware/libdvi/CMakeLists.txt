@@ -10,6 +10,8 @@ target_sources(libdvi INTERFACE
 	${CMAKE_CURRENT_LIST_DIR}/dvi_serialiser.c
 	${CMAKE_CURRENT_LIST_DIR}/dvi_serialiser.h
 	${CMAKE_CURRENT_LIST_DIR}/dvi_timing.c
+    hdmi_audio.c
+    hdmi_island.c
 	${CMAKE_CURRENT_LIST_DIR}/dvi_timing.h
 	${CMAKE_CURRENT_LIST_DIR}/tmds_encode.S
 	${CMAKE_CURRENT_LIST_DIR}/tmds_encode.c
