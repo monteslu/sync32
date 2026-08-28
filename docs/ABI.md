@@ -34,11 +34,11 @@ console.
 | Resource | Guarantee |
 |---|---|
 | CPU | at least 2.5 million CPU cycles per 60 Hz frame (150 MHz-equivalent), Cortex-M33 with FPU/DSP. The system clock is a board-config detail; games pace by vsync, never wall-clock |
-| Game RAM | 229 KB contiguous at 0x20030000, zero-initialized, exclusively the game's, plus a 16 KB stack above it. The 75 KB above it (0x20069400..0x2007C000) is the console's second scanout buffer, which is what makes present() tear-free. |
+| Game RAM | 304 KB contiguous at 0x20030000 (0x20030000..0x2007C000), zero-initialized, exclusively the game's, plus a 16 KB stack above it. The console reserves nothing inside it. |
 | Video | 320x240 (mode 0, 4:3) or 320x180 letterbox (mode 1, 16:9), 60 Hz, square pixels |
 | Color | 8bpp indexed sprites through a 256-entry RGB565 palette; solid ops in raw RGB565 |
 | Sprites | display-list compositing, up to 128 sprite ops per frame, arbitrary WxH source rects, color-key index 0 |
-| Sheets | up to 64 KB of uploaded sprite sheet(s) resident |
+| Sheets | up to 8 sheets, of any size, stored by the GAME (see 6.2): the console keeps no sheet memory of its own |
 | Canvas | optional framebuffer surface at the active resolution, 8bpp indexed |
 | Audio | 48 kHz signed 16-bit stereo ring buffer, at least 1024 frames deep (see 6.4) |
 | Input | canonical pad is SNES-class digital: dpad, A/B/X/Y, LB/RB, Start/Select — games may assume nothing more. 1 pad guaranteed, up to 4 via hub. Analog axes are reported when hardware has them but NEVER required; the console synthesizes left-stick to dpad bits so any pad plays any game |
@@ -89,10 +89,6 @@ colorkey). A game may instead ship an `icon.bmp` in its own namespace, which
 takes precedence and needs no build step at all: see 3.3.
 
 ### 3.2 Game forms: folder and archive
-
-> STATUS: specified 2026-08-28, not yet implemented. The firmware currently
-> lists bare `.s32` files only and resolves streamed data through a sidecar
-> `<romname>/` folder. Sections 3.2 to 3.4 are what it is being changed to.
 
 A game reaches the console in one of two forms, and **a game cannot tell
 which one it is running from**. Both give it the same two things: an
@@ -336,9 +332,13 @@ authoritative C definition is `include/sync32.h`.
 Semantics notes:
 - `sprite` flags: bit0 flip-X, bit1 flip-Y. Source rect entirely within
   the sheet; off-screen destinations are clipped.
-- `sheet_load` copies the 8bpp data into console sheet memory (64 KB
-  total); returns id or <0. Sheets persist until exit. The palette
-  applies to all sheets.
+- `sheet_load(px, w, h)` registers 8bpp pixel data the GAME owns and returns
+  a sheet id (0..7) or <0. The console copies nothing and keeps no arena of
+  its own, so `px` must stay valid and unchanged for as long as the sheet is
+  drawn. The usual case is a `const` array baked into the cart, which lives
+  in flash and costs no RAM at all; that also means a sheet can be as large
+  as the cart rather than capped by a console buffer. Sheets reset on exit.
+  The palette applies to all sheets.
 - `clear()` fills the canvas IMMEDIATELY: clear, then canvas drawing,
   then present shows the drawing. `canvas()` returns the
   active-resolution 8bpp surface composited UNDER sprites.

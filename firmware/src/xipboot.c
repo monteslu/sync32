@@ -28,16 +28,24 @@ typedef struct {
     uint32_t crc32;         // the ROM header's crc32 (payload: code + any
                             // trailing sections) - identifies the cart file
     uint32_t code_size, entry_offset;
-    char filename[40];                  // for the game's disk dir + saves
+    char filename[40];                  // the file the code came from
     uint8_t game_id[8];
     uint8_t video_mode;
-    uint8_t pad_[3];
+    uint8_t form;                       // s32_form_t: how to rebind the
+                                        // namespace on a resumed boot
+    uint8_t pad_[2];
+    char dirname[40];                   // folder backing, "" if none
     uint32_t code_crc32;    // crc of the staged CODE image alone - this is
                             // what the slot contents can actually be checked
                             // against (a cart with an icon has crc32 != this)
 } xip_meta_t;
 
 extern volatile bool s32_long_op;
+
+// Set by the launcher before staging so a resumed boot can rebind the
+// game's namespace without re-scanning the card.
+uint8_t s32_xip_form;
+const char *s32_xip_dir;
 void s32_enter_game(uint32_t entry);            // api.c
 int sd_mount(void);
 
@@ -57,8 +65,15 @@ void s32_xip_boot_check(void) {
     watchdog_hw->scratch[1] = 0;
     if (meta->magic != META_MAGIC) return;
     if (s32_crc32((const void *)SLOT_XIP_ADDR, meta->code_size) != meta->code_crc32) return;
+    void s32_disk_set_source(const char *dir, const char *tar_path);
     void s32_disk_set_dir_id(const char *rom_filename, const uint8_t game_id[8]);
-    s32_disk_set_dir_id((const char *)meta->filename, (const uint8_t *)meta->game_id);
+    if (meta->form == S32_FORM_DIR)
+        s32_disk_set_source((const char *)meta->dirname, NULL);
+    else if (meta->form == S32_FORM_TAR)
+        s32_disk_set_source(NULL, (const char *)meta->filename);
+    else
+        s32_disk_set_dir_id((const char *)meta->filename,
+                            (const uint8_t *)meta->game_id);
     sd_set_game_id((const uint8_t *)meta->game_id);
     s32_video_mode = meta->video_mode == 1 ? 1 : 0;
     printf("xip: booting staged slot entry=%08lx\n",
@@ -66,13 +81,22 @@ void s32_xip_boot_check(void) {
     s32_enter_game(SLOT_XIP_ADDR + meta->entry_offset);
 }
 
-// returns only on error
 int s32_xip_stage_and_launch(const char *filename) {
+    int s32_xip_stage_and_launch_at(const char *f, uint32_t off);
+    return s32_xip_stage_and_launch_at(filename, 0);
+}
+
+// returns only on error
+int s32_xip_stage_and_launch_at(const char *filename, uint32_t hdr_off) {
     if (sd_mount() != 0) return -1;
     static FIL f;
     if (f_open(&f, filename, FA_READ) != FR_OK) return -2;
 
     uint8_t hdr[64]; UINT br;
+    // The header sits at 0 for a raw .s32 or a folder's main.s32e, and at
+    // the member offset for a tar. Either way the code image that follows
+    // it is one contiguous run, which is all the staging loop needs.
+    if (hdr_off && f_lseek(&f, hdr_off) != FR_OK) { f_close(&f); return -3; }
     if (f_read(&f, hdr, 64, &br) != FR_OK || br != 64) { f_close(&f); return -3; }
     const s32_header_t *h = (const s32_header_t *)hdr;
     if (h->magic != S32_MAGIC || h->load_mode != S32_LOAD_XIP) { f_close(&f); return -4; }
@@ -81,6 +105,7 @@ int s32_xip_stage_and_launch(const char *filename) {
     // (e.g. the optional 16x16 launcher icon) are allowed and ignored here
     if (h->code_offset != 64 || h->rom_size < 64 + h->code_size ||
         h->code_size > SLOT_MAX) { f_close(&f); return -5; }
+    // the file cursor is already at hdr_off+64, i.e. the start of the code
 
     if (meta->magic == META_MAGIC && meta->crc32 == h->crc32 &&
         meta->code_size == h->code_size) {
@@ -129,8 +154,10 @@ int s32_xip_stage_and_launch(const char *filename) {
 
     if (rc == 0) {
         xip_meta_t m = { META_MAGIC, crc_want, code_size, entry_offset,
-                         {0}, {0}, 0, {0}, crc_code };
+                         {0}, {0}, 0, 0, {0}, {0}, crc_code };
         strncpy(m.filename, filename, sizeof m.filename - 1);
+        m.form = s32_xip_form;
+        if (s32_xip_dir) strncpy(m.dirname, s32_xip_dir, sizeof m.dirname - 1);
         memcpy(m.game_id, hdr + 48, 8);
         m.video_mode = hdr[29];
         uint8_t page[256];

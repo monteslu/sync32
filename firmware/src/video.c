@@ -25,15 +25,19 @@ static uint16_t cur_palette[256];
 // every cart shipped so far fit well under this, and the 4KB reclaimed
 // pays for the HDMI data-island DMA blocklists. Revisit if a cart ever
 // needs the full 64KB (sheet_load reports -2 and the cart can subdivide).
-static uint8_t sheet_arena[58 * 1024];   /* ABI says 64KB; 6KB of that pays
-                                          * for HDMI audio -- the island DMA
-                                          * blocklists and the 1024-frame
-                                          * sample ring that full-rate 48kHz
-                                          * needs. sheet_load returns -2 past
-                                          * this and a cart can subdivide. */
-static struct { int off, w, h; } sheets[8];
+/* Sheets reference the GAME's memory; the console keeps no arena.
+ *
+ * sheet_load used to memcpy pixels into 58 KB of firmware RAM. Nothing
+ * shipped with it: every real cart draws to the canvas, and sprite data is
+ * better left in XIP flash, where it is memory-mapped, costs no RAM and is
+ * bounded by the 3 MB slot rather than by 58 KB. So the pointer is recorded
+ * instead of the pixels, and the RAM goes to the game (ABI 2, 6.2).
+ *
+ * The pixels must stay valid for as long as the sheet is used, which is
+ * automatic for the usual case of a const array baked into the cart. */
+static struct { const uint8_t *px; int w, h; } sheets[8];
 static int sheet_count;
-static int arena_used;
+
 
 // display list
 typedef struct { int16_t x, y; uint8_t type, sheet, sx, sy, w, h, flags; uint16_t color; } op_t;
@@ -162,19 +166,15 @@ void video_palette(const uint16_t *p) {
 }
 
 int video_sheet_load(const void *px, int w, int h) {
-    if (w <= 0 || h <= 0 || w > 1024 || h > 1024) return -1;
-    int bytes = w * h;
-    if (arena_used + bytes > (int)sizeof sheet_arena) return -2;
+    if (!px || w <= 0 || h <= 0 || w > 1024 || h > 1024) return -1;
     if (sheet_count >= 8) return -3;
-    memcpy(sheet_arena + arena_used, px, bytes);
-    sheets[sheet_count].off = arena_used;
+    sheets[sheet_count].px = (const uint8_t *)px;
     sheets[sheet_count].w = w;
     sheets[sheet_count].h = h;
-    arena_used += bytes;
     return sheet_count++;
 }
 
-void video_sheet_reset(void) { sheet_count = 0; arena_used = 0; }
+void video_sheet_reset(void) { sheet_count = 0; }
 
 static uint8_t color_to_idx(uint16_t c);
 // IMMEDIATE canvas fill (ABI semantic: clear, then canvas drawing, then
@@ -227,7 +227,7 @@ static void render_list(void) {
             continue;
         }
         if (o->sheet < 0 || o->sheet >= sheet_count) continue;
-        const uint8_t *sp = sheet_arena + sheets[o->sheet].off;
+        const uint8_t *sp = sheets[o->sheet].px;
         int sw = sheets[o->sheet].w;
         for (int y = 0; y < h; y++) {
             int dy = y0 + y;

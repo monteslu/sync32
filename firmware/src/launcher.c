@@ -250,22 +250,25 @@ void launcher_run(void) {
         if (((e & S32_PAD_A) || cc == '\r' || cc == '\n' || cc == 'p') && n > 0) {
             uint32_t size;
             printf("loading %s...\n", roms[sel].name);
+            // One path for all three game forms (ABI 3.2): the entry says
+            // where the code image is and what backs the namespace.
+            char file[80]; const char *ddir, *dtar;
+            s32_game_paths(&roms[sel], file, sizeof file, &ddir, &dtar);
+            sd_set_game_id(roms[sel].game_id);
+            void s32_disk_set_source(const char *dir, const char *tar_path);
+            void s32_disk_set_dir_id(const char *rom_filename,
+                                     const uint8_t game_id[8]);
+            if (ddir || dtar) s32_disk_set_source(ddir, dtar);
+            else              s32_disk_set_dir_id(roms[sel].name, roms[sel].game_id);
+
             if (roms[sel].xip) {
-                void s32_disk_set_dir_id(const char *rom_filename,
-                                         const uint8_t game_id[8]);
-                s32_disk_set_dir_id(roms[sel].name, roms[sel].game_id);
-                sd_set_game_id(roms[sel].game_id);
-                int s32_xip_stage_and_launch(const char *filename);
-                int xr = s32_xip_stage_and_launch(roms[sel].name);
+                int s32_xip_stage_and_launch_at(const char *filename, uint32_t off);
+                int xr = s32_xip_stage_and_launch_at(file, roms[sel].code_at);
                 printf("xip launch failed: %d\n", xr);
                 continue;
             }
-            if (sd_read_rom(roms[sel].name, ROM_BUF, ROM_BUF_MAX, &size) == 0) {
-                const s32_header_t *h = (const s32_header_t *)ROM_BUF;
-                sd_set_game_id(h->game_id);
-                void s32_disk_set_dir_id(const char *rom_filename,
-                                         const uint8_t game_id[8]);
-                s32_disk_set_dir_id(roms[sel].name, roms[sel].game_id);
+            if (sd_read_rom_at(file, roms[sel].code_at, ROM_BUF, ROM_BUF_MAX,
+                               &size) == 0) {
                 int r = s32_launch(ROM_BUF, size);  // no return on success
                 printf("launch failed: %d\n", r);
             } else printf("read failed\n");

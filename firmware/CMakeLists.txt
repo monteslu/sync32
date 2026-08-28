@@ -27,6 +27,7 @@ add_executable(sync32
 	src/launcher.c
 	src/sdcard.c
 	src/disk.c
+	src/s32tar.c
 	src/log.c
 	src/xfer.c
 	src/xipboot.c
