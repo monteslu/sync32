@@ -19,12 +19,23 @@ endif()
 add_subdirectory(libdvi)
 add_subdirectory(fatfs/src)
 
+# Video backend selection. Composite needs its PIO program generated too.
+if(NOT DEFINED S32_VIDEO)
+	set(S32_VIDEO "pio-dvi")
+endif()
+if(S32_VIDEO STREQUAL "composite")
+	set(S32_VIDEO_SRC src/video_composite.c)
+else()
+	set(S32_VIDEO_SRC src/video_pio_dvi.c)
+endif()
+
 add_executable(sync32 
 	src/main.c
 	src/video.c
 	# video backend: exactly ONE of these. Each dictates clk_sys, so this is
-	# a build-time choice (see src/video_backend.h).
-	src/video_pio_dvi.c
+	# a build-time choice (see src/video_backend.h). Select with
+	# -DS32_VIDEO=pio-dvi (default) or -DS32_VIDEO=composite.
+	${S32_VIDEO_SRC}
 	# analog audio, for backends with no in-band audio channel (composite)
 	src/audio_pwm.c
 	src/api.c
@@ -80,6 +91,10 @@ target_compile_definitions(sync32 PRIVATE
 	DVI_N_TMDS_BUFFERS=0
 	PICO_PIO_USE_GPIO_BASE=1
 )
+if(S32_VIDEO STREQUAL "composite")
+	pico_generate_pio_header(sync32 ${CMAKE_CURRENT_LIST_DIR}/src/composite.pio)
+endif()
+
 target_include_directories(sync32 PRIVATE src ../sdk/include libdvi tusb_xinput
 	${PICO_TINYUSB_PATH}/src/portable/raspberrypi/rp2040
 	${PICO_TINYUSB_PATH}/src/host)

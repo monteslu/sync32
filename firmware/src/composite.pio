@@ -1,0 +1,44 @@
+; NTSC composite video out: one sample per clock to a resistor-ladder DAC.
+;
+; The whole design rests on one number: clk_sys is 315 MHz, and 315/88 is
+; EXACTLY 3.579545 MHz, the NTSC colour subcarrier. Sampling at clk_sys/22 =
+; 14.318 MHz gives EXACTLY 4 samples per subcarrier cycle, so chroma phase is
+; a 4-entry rotation rather than anything trigonometric, and a line is
+; exactly 910 samples. Those three integers are why colour composite is
+; affordable on this chip (the approach xrip/rp2040-ntsc-tv uses).
+;
+; This program is deliberately dumb: it shifts out 8-bit DAC values at a fixed
+; rate and does nothing else. Sync, burst, blanking and active video are all
+; just sample values that the C side puts in the DMA buffer, so line structure
+; lives in readable C rather than in PIO assembly.
+
+.program composite_dac
+
+.wrap_target
+    out pins, 8        [21]    ; one DAC sample every 22 clocks:
+.wrap                          ; 315 MHz / 22 = 14.318 MHz, exactly 4 samples
+                               ; per 3.579545 MHz subcarrier cycle, and
+                               ; exactly 910 samples per 63.5555us line.
+
+% c-sdk {
+static inline void composite_dac_program_init(PIO pio, uint sm, uint offset,
+                                              uint pin_base, uint pin_count) {
+    pio_sm_config c = composite_dac_program_get_default_config(offset);
+
+    for (uint i = 0; i < pin_count; i++)
+        pio_gpio_init(pio, pin_base + i);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, pin_count, true);
+
+    sm_config_set_out_pins(&c, pin_base, pin_count);
+    // Autopull: the DMA feeds 32-bit words, each holding 4 DAC samples, so
+    // the SM refills without any CPU involvement at all.
+    sm_config_set_out_shift(&c, true, true, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+    // The [21] delay does the division, not the clock divider: a fractional
+    // clkdiv would jitter the subcarrier phase, and phase IS the colour.
+    sm_config_set_clkdiv(&c, 1.0f);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}
