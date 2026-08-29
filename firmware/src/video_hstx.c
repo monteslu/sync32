@@ -217,18 +217,83 @@ void video_backend_start_on_core1(void) {
     // The first scanline call starts the stream; nothing to prime here.
 }
 
-// Push one command list into the HSTX FIFO and wait for it to drain. Simple
-// and synchronous: the sophisticated version chains DMA blocklists so the CPU
-// never waits, which is what a real implementation should do once this is
-// proven on hardware.
-static void push_words(const uint32_t *w, int n) {
+// ---- chained DMA ---------------------------------------------------------
+// The first version of this backend pushed each segment with a blocking DMA
+// and waited for it, which meant the CPU sat in the scanline path once per
+// segment: ~11 waits per line at 31.5k lines/s. That cannot keep the HSTX
+// FIFO fed at 252 MHz, and a starved FIFO is a torn or dead picture.
+//
+// So a line is built as a LIST of control blocks and replayed by a control
+// channel that reprograms the data channel, the same pattern libdvi uses for
+// PIO. The CPU writes the list and starts it; the DMA walks the whole line
+// with no further involvement.
+//
+// The block layout must map exactly onto the DMA's ctrl_trig register alias,
+// which is what makes a 4-word write reconfigure and start a transfer. The
+// static_asserts below are load-bearing: get the layout wrong and the DMA
+// reads garbage as a config, which is a hang rather than a wrong picture.
+typedef struct {
+    const void *read_addr;
+    void *write_addr;
+    uint32_t transfer_count;
+    dma_channel_config c;
+} hstx_cb_t;
+
+static_assert(sizeof(hstx_cb_t) == 4 * sizeof(uint32_t), "bad dma cb layout");
+static_assert(__builtin_offsetof(hstx_cb_t, c.ctrl) ==
+              __builtin_offsetof(dma_channel_hw_t, ctrl_trig),
+              "cb must alias ctrl_trig");
+
+// Worst case per line: island header (3 segments), island body, island tail
+// (4 segments), the pixel run, and a terminating null. Two line lists so the
+// CPU can build the next while the DMA walks the current.
+#define MAX_CB 16
+static hstx_cb_t cb_list[2][MAX_CB];
+static int cb_n;
+static int cb_which;
+
+static void cb_reset(void) { cb_n = 0; }
+
+static void cb_add(const void *src, uint32_t count, bool incr) {
+    if (cb_n >= MAX_CB - 1) return;          // never overrun the terminator
+    hstx_cb_t *b = &cb_list[cb_which][cb_n++];
+    b->read_addr = src;
+    b->write_addr = (void *)&hstx_fifo_hw->fifo;
+    b->transfer_count = count;
+    b->c = dma_channel_get_default_config(dma_px);
+    channel_config_set_transfer_data_size(&b->c, DMA_SIZE_32);
+    channel_config_set_read_increment(&b->c, incr);
+    channel_config_set_write_increment(&b->c, false);
+    channel_config_set_dreq(&b->c, DREQ_HSTX);
+    // Each block chains back to the control channel, which then loads the
+    // next block. A null block (count 0) ends the line.
+    channel_config_set_chain_to(&b->c, dma_cmd);
+    channel_config_set_irq_quiet(&b->c, true);
+}
+
+// Start the list and return immediately. The caller waits only once, at the
+// TOP of the next line, so the CPU has a whole line of slack to work in.
+static void cb_run(void) {
+    hstx_cb_t *t = &cb_list[cb_which][cb_n];
+    t->read_addr = NULL;
+    t->write_addr = NULL;
+    t->transfer_count = 0;                   // null trigger: stops the chain
+    t->c = dma_channel_get_default_config(dma_px);
+
     dma_channel_config c = dma_channel_get_default_config(dma_cmd);
     channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
     channel_config_set_read_increment(&c, true);
-    channel_config_set_write_increment(&c, false);
-    channel_config_set_dreq(&c, DREQ_HSTX);
-    dma_channel_configure(dma_cmd, &c, &hstx_fifo_hw->fifo, w, n, true);
+    channel_config_set_write_increment(&c, true);
+    channel_config_set_ring(&c, true, 4);    // wrap every 4 words = one block
+    dma_channel_configure(dma_cmd, &c,
+                          &dma_hw->ch[dma_px].read_addr,
+                          cb_list[cb_which], 4, true);
+    cb_which ^= 1;
+}
+
+static void cb_wait(void) {
     dma_channel_wait_for_finish_blocking(dma_cmd);
+    dma_channel_wait_for_finish_blocking(dma_px);
 }
 
 // Emit one active line with an HDMI data island spliced into blanking.
@@ -239,7 +304,12 @@ static void push_words(const uint32_t *w, int n) {
 // video guard band. Omitting those leaves the picture working while no sink
 // ever accepts the audio, which is the exact trap the PIO backend fell into.
 //
-//   [fp][island pre][guard][island 32][guard][rest of blank][vid pre][guard][active]
+//   [fp][island pre][guard][island 32][guard][rest][vid pre][guard][active]
+//
+// These command words are static, not stack locals: the DMA reads them AFTER
+// this function returns, so a stack buffer would be reused garbage by then.
+static uint32_t isl_hdr[6], isl_tail[8], px_cmd;
+
 static void emit_active_line_hdmi(const uint16_t *px) {
     int buf = hdmi_island_ready();
     island_transpose(buf);
@@ -251,36 +321,28 @@ static void emit_active_line_hdmi(const uint16_t *px) {
 
     const int ISL = ISLAND_SYMS;
     int blank = H_FRONT + H_SYNC + H_BACK;
-    int used  = 8 /*isl pre*/ + 2 /*guard*/ + ISL + 2 /*guard*/
-              + VIDEO_PREAMBLE + VIDEO_GUARD;
-    int rest  = blank - used;
+    int rest  = blank - (8 + 2 + ISL + 2 + VIDEO_PREAMBLE + VIDEO_GUARD);
 
-    uint32_t hdr[6];
-    hdr[0] = HSTX_CMD_RAW_REPEAT | 8;   hdr[1] = isl_pre;
-    hdr[2] = HSTX_CMD_RAW_REPEAT | 2;   hdr[3] = guard;
-    hdr[4] = HSTX_CMD_RAW | ISL;        hdr[5] = 0;   /* words follow */
-    push_words(hdr, 5);
-    push_words(island_words_hstx, ISL);
+    isl_hdr[0] = HSTX_CMD_RAW_REPEAT | 8;   isl_hdr[1] = isl_pre;
+    isl_hdr[2] = HSTX_CMD_RAW_REPEAT | 2;   isl_hdr[3] = guard;
+    isl_hdr[4] = HSTX_CMD_RAW | (uint32_t)ISL;  isl_hdr[5] = 0;
 
-    uint32_t tail[8];
-    tail[0] = HSTX_CMD_RAW_REPEAT | 2;              tail[1] = guard;
-    tail[2] = HSTX_CMD_RAW_REPEAT | (uint32_t)rest; tail[3] = CTRL_ACTIVE;
-    tail[4] = HSTX_CMD_RAW_REPEAT | VIDEO_PREAMBLE;
+    isl_tail[0] = HSTX_CMD_RAW_REPEAT | 2;              isl_tail[1] = guard;
+    isl_tail[2] = HSTX_CMD_RAW_REPEAT | (uint32_t)rest; isl_tail[3] = CTRL_ACTIVE;
+    isl_tail[4] = HSTX_CMD_RAW_REPEAT | VIDEO_PREAMBLE;
     // Video preamble is CTL0=1, CTL1=0 on ch1 and 0b00 on ch2: that ch2
     // difference is what distinguishes it from the ISLAND preamble above.
-    tail[5] = CTRL_ACTIVE | (SYNC_V0_H1 << 10) | (SYNC_V0_H0 << 20);
-    tail[6] = HSTX_CMD_RAW_REPEAT | VIDEO_GUARD;    tail[7] = guard;
-    push_words(tail, 8);
+    isl_tail[5] = CTRL_ACTIVE | (SYNC_V0_H1 << 10) | (SYNC_V0_H0 << 20);
+    isl_tail[6] = HSTX_CMD_RAW_REPEAT | VIDEO_GUARD;    isl_tail[7] = guard;
+    px_cmd = HSTX_CMD_TMDS | H_ACTIVE;
 
-    uint32_t cmd = HSTX_CMD_TMDS | H_ACTIVE;
-    push_words(&cmd, 1);
-    dma_channel_config c = dma_channel_get_default_config(dma_px);
-    channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
-    channel_config_set_read_increment(&c, true);
-    channel_config_set_write_increment(&c, false);
-    channel_config_set_dreq(&c, DREQ_HSTX);
-    dma_channel_configure(dma_px, &c, &hstx_fifo_hw->fifo, px, H_ACTIVE / 2, true);
-    dma_channel_wait_for_finish_blocking(dma_px);
+    cb_reset();
+    cb_add(isl_hdr, 5, true);
+    cb_add(island_words_hstx, (uint32_t)ISL, true);
+    cb_add(isl_tail, 8, true);
+    cb_add(&px_cmd, 1, false);
+    cb_add(px, H_ACTIVE / 2, true);
+    cb_run();
 
     hdmi_island_consume();
 }
@@ -288,7 +350,7 @@ static void emit_active_line_hdmi(const uint16_t *px) {
 // Build the next island: one audio packet per line while the game is pushing
 // samples, with control packets on a 1-in-96 cadence. Cadence and rationale
 // are the PIO backend's, which was tuned against working HDMI-audio forks
-// rather than against my own reading of the spec.
+// rather than against my own reading of the spec text.
 static bool aud_block_start = true;
 static void build_next_island(void) {
     static uint16_t ctl_ctr;
@@ -325,20 +387,20 @@ void video_backend_scanline(const uint16_t *line16, int y) {
 
     // Each console row covers two DVI rows, for the same reason: 240 -> 480.
     for (int rep = 0; rep < 2; rep++) {
+        // Wait for the PREVIOUS line, then queue this one and return. One
+        // wait per line instead of one per segment is the point of the list:
+        // the CPU gets a whole line of slack rather than being called back
+        // eleven times while the FIFO drains.
+        cb_wait();
         if (hdmi_island_is_armed()) {
             build_next_island();
             emit_active_line_hdmi(dst);
         } else {
             // No audio: stay in plain DVI mode, no preamble or guard needed.
-            push_words(active_pre, sizeof active_pre / 4);
-            dma_channel_config c = dma_channel_get_default_config(dma_px);
-            channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
-            channel_config_set_read_increment(&c, true);
-            channel_config_set_write_increment(&c, false);
-            channel_config_set_dreq(&c, DREQ_HSTX);
-            dma_channel_configure(dma_px, &c, &hstx_fifo_hw->fifo,
-                                  dst, H_ACTIVE / 2, true);
-            dma_channel_wait_for_finish_blocking(dma_px);
+            cb_reset();
+            cb_add(active_pre, sizeof active_pre / 4, true);
+            cb_add(dst, H_ACTIVE / 2, true);
+            cb_run();
         }
     }
     fill_idx ^= 1;
@@ -346,8 +408,14 @@ void video_backend_scanline(const uint16_t *line16, int y) {
     // The shared scanout loop only knows about 240 rows, so the vertical
     // blanking interval is emitted here after the last visible one.
     if (y == 239) {
-        for (int l = 0; l < V_FRONT; l++) push_words(vblank_line, 7);
-        for (int l = 0; l < V_SYNC; l++)  push_words(vsync_line, 7);
-        for (int l = 0; l < V_BACK; l++)  push_words(vblank_line, 7);
+        for (int l = 0; l < V_FRONT; l++) {
+            cb_wait(); cb_reset(); cb_add(vblank_line, 7, true); cb_run();
+        }
+        for (int l = 0; l < V_SYNC; l++) {
+            cb_wait(); cb_reset(); cb_add(vsync_line, 7, true); cb_run();
+        }
+        for (int l = 0; l < V_BACK; l++) {
+            cb_wait(); cb_reset(); cb_add(vblank_line, 7, true); cb_run();
+        }
     }
 }
