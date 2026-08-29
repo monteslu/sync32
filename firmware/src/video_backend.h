@@ -44,6 +44,13 @@ void video_backend_set_clock(void);
 // Called on core 0 during video_init, before core 1 is launched.
 void video_backend_init(void);
 
+// Does this backend carry audio inside the video signal? HDMI does, via
+// data islands. Composite does NOT: the yellow RCA is video only, so those
+// builds bring up analog PWM audio instead (audio_pwm.h). Returning the
+// wrong answer here is silence, not a crash, so it is stated per backend
+// rather than inferred.
+int video_backend_has_inband_audio(void);
+
 // Called ON CORE 1, once, at the top of the scanout loop: register the
 // backend's IRQs against this core and start the pixel clock.
 void video_backend_start_on_core1(void);

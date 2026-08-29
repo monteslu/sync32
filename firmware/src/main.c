@@ -5,6 +5,8 @@
 #include "pico/bootrom.h"
 #include "sync32.h"
 #include "video.h"
+#include "video_backend.h"
+#include "audio_pwm.h"
 #include "crash.h"
 #include "log.h"
 
@@ -102,6 +104,9 @@ int main(void) {
     STAGE(2);
 
     video_init();
+    // Backends with no in-band audio channel (composite: the yellow RCA is
+    // video only) need an analog path. HDMI builds skip this entirely.
+    if (!video_backend_has_inband_audio()) s32_audio_pwm_init();
     STAGE(3);
     s32_log("video up");
     // dual-role USB: scratch[3] flag = boot straight into pad (host) mode;

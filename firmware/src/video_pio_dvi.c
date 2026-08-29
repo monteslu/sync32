@@ -28,6 +28,9 @@
 
 const char *video_backend_name(void) { return "pio-dvi"; }
 
+// HDMI data islands carry the audio, so this build needs no analog path.
+int video_backend_has_inband_audio(void) { return 1; }
+
 void video_backend_set_clock(void) {
     // 252 MHz. A multiple of 12, so PIO-USB host ports work on this build.
     vreg_set_voltage(VREG_VOLTAGE_1_20);

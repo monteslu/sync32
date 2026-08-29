@@ -25,6 +25,8 @@ add_executable(sync32
 	# video backend: exactly ONE of these. Each dictates clk_sys, so this is
 	# a build-time choice (see src/video_backend.h).
 	src/video_pio_dvi.c
+	# analog audio, for backends with no in-band audio channel (composite)
+	src/audio_pwm.c
 	src/api.c
 	src/embedded_rom.c
 	src/launcher.c
