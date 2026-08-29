@@ -28,6 +28,8 @@
 #include "hardware/vreg.h"
 #include "hardware/clocks.h"
 #include "video_backend.h"
+#include "hdmi_island.h"
+#include "hdmi_audio.h"
 
 // ---- timing: the same 640x480p60 the PIO-DVI backend emits ---------------
 #define H_ACTIVE 640
@@ -88,6 +90,45 @@ static uint32_t active_pre[] = {
     HSTX_CMD_TMDS       | H_ACTIVE
 };
 
+// ---- HDMI data islands ---------------------------------------------------
+// The island machinery (packet build, BCH ECC, TERC4 encode) is shared with
+// the PIO backend and needs no changes. What DOES change is the packing.
+//
+// libdvi hands out islands as three PER-LANE arrays, two 10-bit symbols to a
+// word, because each PIO state machine drives one lane. HSTX has ONE shift
+// register that every lane indexes into (SEL_P/SEL_N pick a bit 0..31), so
+// the same island has to be transposed: one word per SYMBOL, with the three
+// lanes 10 bits apart, matching the bit positions the lane config selects.
+//
+// Getting this wrong is not a crash. It is a picture that looks perfect while
+// no sink ever accepts the audio, which is exactly the failure mode the PIO
+// backend spent a long time in.
+#define ISLAND_SYMS 36
+#define VIDEO_PREAMBLE 8
+#define VIDEO_GUARD    2
+#define GUARD_SYM_12   0x133u    /* HDMI 1.4b 5.2.3.3 */
+
+static uint32_t island_words_hstx[ISLAND_SYMS];
+
+static void island_transpose(int buf) {
+    const uint32_t *l0 = hdmi_island_words(buf, 0);
+    const uint32_t *l1 = hdmi_island_words(buf, 1);
+    const uint32_t *l2 = hdmi_island_words(buf, 2);
+    int n = hdmi_island_words_len();
+    for (int w = 0, sym = 0; w < n; w++) {
+        // Two symbols per source word, low symbol first.
+        for (int half = 0; half < 2 && sym < ISLAND_SYMS; half++, sym++) {
+            uint32_t s0 = (l0[w] >> (half * 10)) & 0x3ff;
+            uint32_t s1 = (l1[w] >> (half * 10)) & 0x3ff;
+            uint32_t s2 = (l2[w] >> (half * 10)) & 0x3ff;
+            island_words_hstx[sym] = s0 | (s1 << 10) | (s2 << 20);
+        }
+    }
+}
+
+// A raw word carrying the same symbol on all three lanes.
+static inline uint32_t sym3(uint32_t s) { return s | (s << 10) | (s << 20); }
+
 // Two scanline buffers of RGB565, pixel-doubled from the console's 320-wide
 // canvas to 640. Double-buffered so the DMA reads one while core 1 fills the
 // other; a single buffer tears every line.
@@ -98,10 +139,9 @@ static uint dma_cmd, dma_px;
 
 const char *video_backend_name(void) { return "hstx-dvi"; }
 
-// DVI carries audio the same way the PIO backend does, in data islands. That
-// path is not implemented here yet, so report false for now and let the build
-// bring up analog PWM: silence would be worse than a jack.
-int video_backend_has_inband_audio(void) { return 0; }
+// HDMI audio rides in data islands inside the blanking interval, same as the
+// PIO backend. See the island splicing in video_backend_scanline.
+int video_backend_has_inband_audio(void) { return 1; }
 
 void video_backend_set_clock(void) {
     // 252 MHz: ten TMDS bits per pixel at 25.2 MHz, so 640x480 at 60.02 Hz,
@@ -167,6 +207,7 @@ void video_backend_init(void) {
         gpio_set_function(12 + i, 0);      // GPIO_FUNC_HSTX
     }
 
+    hdmi_island_init();      // prime island buffers before anything streams
     dma_cmd = dma_claim_unused_channel(true);
     dma_px  = dma_claim_unused_channel(true);
     fill_idx = 0;
@@ -190,6 +231,88 @@ static void push_words(const uint32_t *w, int n) {
     dma_channel_wait_for_finish_blocking(dma_cmd);
 }
 
+// Emit one active line with an HDMI data island spliced into blanking.
+//
+// Line shape once the link is in HDMI mode (HDMI 1.4b 5.2.2): the island sits
+// early in blanking behind its own preamble and guard bands, and EVERY video
+// period must then be preceded by an 8-clock video preamble and a 2-clock
+// video guard band. Omitting those leaves the picture working while no sink
+// ever accepts the audio, which is the exact trap the PIO backend fell into.
+//
+//   [fp][island pre][guard][island 32][guard][rest of blank][vid pre][guard][active]
+static void emit_active_line_hdmi(const uint16_t *px) {
+    int buf = hdmi_island_ready();
+    island_transpose(buf);
+
+    // Island preamble: CTL0=1 CTL1=0 CTL2=1 CTL3=0, i.e. the 0b01 control
+    // symbol on ch1 and ch2 while ch0 keeps its sync levels.
+    uint32_t isl_pre = CTRL_ACTIVE | (SYNC_V0_H1 << 10) | (SYNC_V0_H1 << 20);
+    uint32_t guard   = CTRL_ACTIVE | (GUARD_SYM_12 << 10) | (GUARD_SYM_12 << 20);
+
+    const int ISL = ISLAND_SYMS;
+    int blank = H_FRONT + H_SYNC + H_BACK;
+    int used  = 8 /*isl pre*/ + 2 /*guard*/ + ISL + 2 /*guard*/
+              + VIDEO_PREAMBLE + VIDEO_GUARD;
+    int rest  = blank - used;
+
+    uint32_t hdr[6];
+    hdr[0] = HSTX_CMD_RAW_REPEAT | 8;   hdr[1] = isl_pre;
+    hdr[2] = HSTX_CMD_RAW_REPEAT | 2;   hdr[3] = guard;
+    hdr[4] = HSTX_CMD_RAW | ISL;        hdr[5] = 0;   /* words follow */
+    push_words(hdr, 5);
+    push_words(island_words_hstx, ISL);
+
+    uint32_t tail[8];
+    tail[0] = HSTX_CMD_RAW_REPEAT | 2;              tail[1] = guard;
+    tail[2] = HSTX_CMD_RAW_REPEAT | (uint32_t)rest; tail[3] = CTRL_ACTIVE;
+    tail[4] = HSTX_CMD_RAW_REPEAT | VIDEO_PREAMBLE;
+    // Video preamble is CTL0=1, CTL1=0 on ch1 and 0b00 on ch2: that ch2
+    // difference is what distinguishes it from the ISLAND preamble above.
+    tail[5] = CTRL_ACTIVE | (SYNC_V0_H1 << 10) | (SYNC_V0_H0 << 20);
+    tail[6] = HSTX_CMD_RAW_REPEAT | VIDEO_GUARD;    tail[7] = guard;
+    push_words(tail, 8);
+
+    uint32_t cmd = HSTX_CMD_TMDS | H_ACTIVE;
+    push_words(&cmd, 1);
+    dma_channel_config c = dma_channel_get_default_config(dma_px);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
+    channel_config_set_read_increment(&c, true);
+    channel_config_set_write_increment(&c, false);
+    channel_config_set_dreq(&c, DREQ_HSTX);
+    dma_channel_configure(dma_px, &c, &hstx_fifo_hw->fifo, px, H_ACTIVE / 2, true);
+    dma_channel_wait_for_finish_blocking(dma_px);
+
+    hdmi_island_consume();
+}
+
+// Build the next island: one audio packet per line while the game is pushing
+// samples, with control packets on a 1-in-96 cadence. Cadence and rationale
+// are the PIO backend's, which was tuned against working HDMI-audio forks
+// rather than against my own reading of the spec.
+static bool aud_block_start = true;
+static void build_next_island(void) {
+    static uint16_t ctl_ctr;
+    hdmi_packet_t pkt;
+    if ((ctl_ctr % 96) == 0) {
+        unsigned slot = (ctl_ctr / 96) & 3;
+        if (slot == 0)      hdmi_pkt_avi_infoframe(&pkt);
+        else if (slot == 1) hdmi_pkt_audio_infoframe(&pkt);
+        else                hdmi_pkt_acr(&pkt, 6144, 25200);
+        ctl_ctr++;
+        hdmi_island_build(&pkt, true, true);
+    } else {
+        int16_t pcm[8];
+        extern int s32_audio_take(int16_t *out, int max_frames);
+        int n = s32_audio_take(pcm, 4);
+        if (n > 0) {
+            ctl_ctr++;
+            hdmi_pkt_audio(&pkt, pcm, n, aud_block_start, 0);
+            aud_block_start = false;
+            hdmi_island_build(&pkt, true, true);
+        }
+    }
+}
+
 void video_backend_scanline(const uint16_t *line16, int y) {
     // Pixel-double 320 -> 640. The console canvas is 320 wide and DVI is
     // emitting 640, so each source pixel covers two output pixels exactly:
@@ -202,15 +325,21 @@ void video_backend_scanline(const uint16_t *line16, int y) {
 
     // Each console row covers two DVI rows, for the same reason: 240 -> 480.
     for (int rep = 0; rep < 2; rep++) {
-        push_words(active_pre, sizeof active_pre / 4);
-        dma_channel_config c = dma_channel_get_default_config(dma_px);
-        channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
-        channel_config_set_read_increment(&c, true);
-        channel_config_set_write_increment(&c, false);
-        channel_config_set_dreq(&c, DREQ_HSTX);
-        dma_channel_configure(dma_px, &c, &hstx_fifo_hw->fifo,
-                              dst, H_ACTIVE / 2, true);
-        dma_channel_wait_for_finish_blocking(dma_px);
+        if (hdmi_island_is_armed()) {
+            build_next_island();
+            emit_active_line_hdmi(dst);
+        } else {
+            // No audio: stay in plain DVI mode, no preamble or guard needed.
+            push_words(active_pre, sizeof active_pre / 4);
+            dma_channel_config c = dma_channel_get_default_config(dma_px);
+            channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
+            channel_config_set_read_increment(&c, true);
+            channel_config_set_write_increment(&c, false);
+            channel_config_set_dreq(&c, DREQ_HSTX);
+            dma_channel_configure(dma_px, &c, &hstx_fifo_hw->fifo,
+                                  dst, H_ACTIVE / 2, true);
+            dma_channel_wait_for_finish_blocking(dma_px);
+        }
     }
     fill_idx ^= 1;
 
