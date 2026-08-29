@@ -25,6 +25,8 @@ if(NOT DEFINED S32_VIDEO)
 endif()
 if(S32_VIDEO STREQUAL "composite")
 	set(S32_VIDEO_SRC src/video_composite.c)
+elseif(S32_VIDEO STREQUAL "hstx")
+	set(S32_VIDEO_SRC src/video_hstx.c)
 else()
 	set(S32_VIDEO_SRC src/video_pio_dvi.c)
 endif()
@@ -34,7 +36,7 @@ add_executable(sync32
 	src/video.c
 	# video backend: exactly ONE of these. Each dictates clk_sys, so this is
 	# a build-time choice (see src/video_backend.h). Select with
-	# -DS32_VIDEO=pio-dvi (default) or -DS32_VIDEO=composite.
+	# -DS32_VIDEO=pio-dvi (default), =hstx, or =composite.
 	${S32_VIDEO_SRC}
 	# analog audio, for backends with no in-band audio channel (composite)
 	src/audio_pwm.c
