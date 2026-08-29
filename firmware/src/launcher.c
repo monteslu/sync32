@@ -5,6 +5,7 @@
 #include "pico/stdlib.h"
 #include "hardware/watchdog.h"
 #include "sync32.h"
+#include "video_backend.h"
 #include "video.h"
 #include "sdcard.h"
 #include "log.h"
@@ -205,6 +206,16 @@ void launcher_run(void) {
             }
         }
         draw_text12(6, 224, "A: play  X: demo  Y: usb drive  r: recv", C_DIM);
+        // Build identity, right-aligned. A UF2 built for the wrong video
+        // backend produces NO PICTURE AT ALL, so this line is the only thing
+        // that tells a user which one they flashed. It costs 8 px of a row
+        // that was already there.
+        {
+            const char *b = video_backend_name();
+            int w = 0;
+            for (const char *q = b; *q; q++) w += 8;
+            draw_text12(314 - w, 224, b, C_DIM);
+        }
         video_present();
         if ((video_frame_count() % 120) == 0) {
             watchdog_hw->scratch[0] = 0;   // forensics: alive

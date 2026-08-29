@@ -22,6 +22,9 @@ add_subdirectory(fatfs/src)
 add_executable(sync32 
 	src/main.c
 	src/video.c
+	# video backend: exactly ONE of these. Each dictates clk_sys, so this is
+	# a build-time choice (see src/video_backend.h).
+	src/video_pio_dvi.c
 	src/api.c
 	src/embedded_rom.c
 	src/launcher.c
